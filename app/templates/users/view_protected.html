@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block page_title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body p-4">
+                <table class="table">
+                    <tr>
+                        <th>Username</th>
+                        <td>{{ user.username }}</td>
+                    </tr>
+                    <tr>
+                        <th>Full Name</th>
+                        <td>{{ user.full_name }}</td>
+                    </tr>
+                    <tr>
+                        <th>Email</th>
+                        <td>
+                            <form method="POST" class="d-flex gap-2 align-items-center">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="email" name="email" class="form-control form-control-sm" value="{{ user.email or '' }}" placeholder="name@ananta.com.bd">
+                                <button type="submit" class="btn btn-sm btn-primary">Save</button>
+                            </form>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Role</th>
+                        <td>{{ user.role.name }}</td>
+                    </tr>
+                    <tr>
+                        <th>Access</th>
+                        <td>Global (All Factories)</td>
+                    </tr>
+                    <tr>
+                        <th>Status</th>
+                        <td>
+                            {% if user.is_active %}
+                                <span class="badge-status badge-valid">Active</span>
+                            {% else %}
+                                <span class="badge-status" style="background:#EEF1F7; color:#6B7280;">Inactive</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                </table>
+
+                <a href="{{ url_for('users.list_users') }}" class="btn btn-outline-secondary">Back to Users</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

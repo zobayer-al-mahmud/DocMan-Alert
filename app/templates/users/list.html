@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Users{% endblock %}
+{% block page_title %}Users{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <form method="GET" class="d-flex gap-2 flex-grow-1 me-3">
+        <input type="search" name="search" class="form-control" placeholder="Search name, email, role, factory, or department" value="{{ search }}">
+        <button class="btn btn-primary" type="submit">Search</button>
+        {% if search %}
+        <a href="{{ url_for('users.list_users') }}" class="btn btn-outline-secondary">Clear</a>
+        {% endif %}
+    </form>
+    <a href="{{ url_for('users.add_user') }}" class="btn btn-accent text-nowrap">+ Add User</a>
+</div>
+
+<div class="card">
+<table class="table mb-0">
+    <thead>
+        <tr>
+            <th>Username</th>
+            <th>Full Name</th>
+            <th>Email</th>
+            <th>Role</th>
+            <th>Factory</th>
+            <th>Department</th>
+            <th>Status</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for u in users %}
+        <tr>
+            <td>{{ u.username }}</td>
+            <td>{{ u.full_name }}</td>
+            <td>{{ u.email or '-' }}</td>
+            <td>{{ u.role.name }}</td>
+            <td>{{ u.factory.name if u.factory else "Global (All Factories)" }}</td>
+            <td>{{ u.department.name if u.department else '-' }}</td>
+            <td>
+                {% if u.is_active %}
+                    <span class="badge-status badge-valid">Active</span>
+                {% else %}
+                    <span class="badge-status" style="background:#EEF1F7; color:#6B7280;">Inactive</span>
+                {% endif %}
+            </td>
+            <td>
+                <a href="{{ url_for('users.edit_user', user_id=u.id) }}" class="btn btn-sm btn-secondary">Edit</a>
+                {% if u.id != current_user.id and not (u.username == 'admin' and u.role.name == 'Super Admin') %}
+                    {% if current_user.role.name == 'Super Admin' or (u.factory_id == current_user.factory_id and u.role.name not in ['Super Admin', 'Administration', 'Factory Admin']) %}
+                    <a href="{{ url_for('users.delete_user', user_id=u.id) }}" class="btn btn-sm btn-danger">Delete</a>
+                    {% endif %}
+                {% endif %}
+            </td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="8" class="text-center text-muted py-4">No users found.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+{% endblock %}

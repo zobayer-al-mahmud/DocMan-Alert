@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_badge %}
+{% block title %}Employee Licenses{% endblock %}
+{% block page_title %}Employee Licenses{% endblock %}
+
+{% block content %}
+<a href="{{ url_for('employees.list_employees') }}" class="btn btn-outline-secondary btn-sm mb-3">&larr; Employees</a>
+
+<form method="GET" class="card card-body mb-3">
+    <div class="row g-2">
+        <div class="col-md-3"><input type="text" name="search" class="form-control" placeholder="Name, number, or OCR text" value="{{ search or '' }}"></div>
+        <div class="col-md-3"><input type="text" name="compliance_type" class="form-control" placeholder="Compliance type" value="{{ selected_type }}"></div>
+        <div class="col-md-3">
+            <select name="status" class="form-select">
+                <option value="">All Status</option>
+                {% for s in all_statuses %}<option value="{{ s }}" {% if selected_status == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2"><button type="submit" class="btn btn-primary w-100">Filter</button></div>
+    </div>
+</form>
+
+<div class="card">
+<table class="table mb-0">
+    <thead><tr><th>Employee</th><th>Factory</th><th>Type</th><th>Reg. No.</th><th>Expiry</th><th>Status</th></tr></thead>
+    <tbody>
+        {% for r in records %}
+        <tr>
+            <td><a href="{{ url_for('employees.view_employee', employee_id=r.employee.id) }}">{{ r.employee.name }}</a> ({{ r.employee.employee_code }})</td>
+            <td>{{ r.employee.factory.name }}</td>
+            <td>{{ r.compliance_type }}</td>
+            <td>{{ r.registration_number or '-' }}</td>
+            <td>{% if r.no_expiry %}No expiry{% else %}{{ r.expiry_date or '-' }}{% endif %}</td>
+            <td>{{ status_badge(r.status) }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-center text-muted py-4">No license records found.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+
+{% if pagination.pages > 1 %}
+<nav class="mt-3"><ul class="pagination">
+    {% for page_num in range(1, pagination.pages + 1) %}
+    <li class="page-item {% if page_num == pagination.page %}active{% endif %}">
+        <a class="page-link" href="{{ url_for('employees.list_licenses', page=page_num, compliance_type=selected_type, status=selected_status, search=search) }}">{{ page_num }}</a>
+    </li>
+    {% endfor %}
+</ul></nav>
+{% endif %}
+{% endblock %}

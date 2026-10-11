@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_badge %}
+{% block title %}My Alerts{% endblock %}
+{% block page_title %}My Alert Responsibilities{% endblock %}
+
+{% block content %}
+<p class="text-muted">Records that can send you an email. A record goes to its assigned person, or to the department or company when nobody is assigned. This is not an inbox. Sent messages are under Alert History.</p>
+<div class="mb-3">
+    {% if show_all %}
+    <a href="{{ url_for('main.my_alerts') }}" class="btn btn-sm btn-outline-primary">Needs attention</a>
+    {% else %}
+    <a href="{{ url_for('main.my_alerts', show='all') }}" class="btn btn-sm btn-outline-secondary">Show all responsibilities</a>
+    {% endif %}
+</div>
+
+<div class="card">
+<table class="table mb-0">
+    <thead>
+        <tr>
+            <th>Record</th>
+            <th>Company</th>
+            <th>Factory</th>
+            <th>Department</th>
+            <th>Expiry</th>
+            <th>Status</th>
+            <th>Alert source</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in items %}
+        <tr>
+            <td>
+                {% if item.url %}<a href="{{ item.url }}">{{ item.name }}</a>{% else %}{{ item.name }}{% endif %}
+                <div class="text-muted small">{{ item.kind }}</div>
+            </td>
+            <td>{{ item.company }}</td>
+            <td>{{ item.factory }}</td>
+            <td>{{ item.department }}</td>
+            <td>{{ item.expiry or '-' }}</td>
+            <td>{{ status_badge(item.status) }}</td>
+            <td>{{ item.source }}</td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="7" class="text-center text-muted py-4">
+                {% if show_all %}No records are assigned to you yet.{% else %}Nothing assigned to you needs attention right now.{% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+{% endblock %}

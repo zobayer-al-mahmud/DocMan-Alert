@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: compliance-tracker
+  namespace: compliance
+spec:
+  selector:
+    app: compliance-tracker
+  ports:
+    - name: http
+      port: 80
+      targetPort: 5001

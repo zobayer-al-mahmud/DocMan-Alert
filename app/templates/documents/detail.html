@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}{{ document.doc_name }}{% endblock %}
+{% block page_title %}Document Details{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <a href="{{ url_for('documents.list_documents') }}" class="btn btn-outline-secondary btn-sm">&larr; Back</a>
+    {% if can_manage %}
+    <div>
+        <a href="{{ url_for('documents.edit_document', document_id=document.id) }}" class="btn btn-secondary btn-sm">Edit</a>
+        <a href="{{ url_for('documents.renew_document', document_id=document.id) }}" class="btn btn-accent btn-sm">Renew</a>
+        <a href="{{ url_for('documents.send_document_alert', document_id=document.id) }}" class="btn btn-outline-primary btn-sm">Send alert</a>
+        {% if can_delete %}
+        <a href="{{ url_for('documents.delete_document', document_id=document.id) }}" class="btn btn-outline-danger btn-sm">Delete</a>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <h5>{{ document.doc_name }}</h5>
+        <div class="row">
+            <div class="col-md-6"><p><strong>Factory:</strong> {{ document.factory.name }}</p></div>
+            <div class="col-md-6"><p><strong>Department:</strong> {{ document.department.name if document.department else '-' }}</p></div>
+            <div class="col-md-6"><p><strong>Type:</strong> {{ document.doc_type }}</p></div>
+            <div class="col-md-6"><p><strong>Cert/License No.:</strong> {{ document.cert_no or '-' }}</p></div>
+            <div class="col-md-6"><p><strong>Issue Date:</strong> {{ document.issue_date or '-' }}</p></div>
+            <div class="col-md-6"><p><strong>Expiry Date:</strong> {% if document.no_expiry %}No expiry{% else %}{{ document.expiry_date or '-' }}{% endif %}</p></div>
+            <div class="col-md-6"><p><strong>Issuing Authority:</strong> {{ document.issuing_authority or '-' }}</p></div>
+            {% if current_user.role.name in ["Super Admin", "Administration"] %}
+            <div class="col-md-4"><p><strong>Category:</strong> {{ document.category.name if document.category else '-' }}</p></div>
+            <div class="col-md-4"><p><strong>Regulatory Authority:</strong> {{ document.authority.name if document.authority else '-' }}</p></div>
+            <div class="col-md-4"><p><strong>Service:</strong> {{ document.service.name if document.service else '-' }}</p></div>
+            {% endif %}
+            <div class="col-md-6"><p><strong>Responsible Person:</strong> {{ document.responsible_person or '-' }}</p></div>
+            <div class="col-md-6"><p><strong>Status:</strong> {{ document.status }}</p></div>
+            <div class="col-md-6"><p><strong>Renewal:</strong> {{ document.renewal_status }}</p></div>
+            <div class="col-12"><p><strong>Remarks:</strong> {{ document.remarks or '-' }}</p></div>
+            <div class="col-12">
+                <p class="mb-1"><strong>OCR:</strong>
+                    {% set latest = versions[0] if versions else none %}
+                    {% if latest and latest.ocr_result %}
+                        {{ latest.ocr_result.ocr_status }}
+                        {% if latest.ocr_result.language %} · {{ latest.ocr_result.language }}{% endif %}
+                        {% if latest.ocr_result.confidence is not none %} · {{ latest.ocr_result.confidence }}%{% endif %}
+                        <a href="{{ url_for('documents.view_ocr', version_id=latest.id) }}" class="btn btn-sm btn-outline-secondary ms-2">View Extracted Text</a>
+                        {% if can_manage %}
+                        <form method="POST" action="{{ url_for('documents.run_ocr', version_id=latest.id) }}" style="display:inline;">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button class="btn btn-sm btn-outline-primary">Reprocess OCR</button>
+                        </form>
+                        {% endif %}
+                    {% elif latest %}
+                        <span class="text-muted">Not run</span>
+                        {% if can_manage and (latest.file_path.lower().endswith('.pdf') or latest.file_path.lower().endswith('.jpg') or latest.file_path.lower().endswith('.jpeg') or latest.file_path.lower().endswith('.png')) %}
+                        <form method="POST" action="{{ url_for('documents.run_ocr', version_id=latest.id) }}" style="display:inline;">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button class="btn btn-sm btn-outline-primary">Run OCR</button>
+                        </form>
+                        {% endif %}
+                    {% else %}
+                        <span class="text-muted">Upload a file before running OCR.</span>
+                    {% endif %}
+                </p>
+            </div>
+            <div class="col-12">
+                <p class="mb-1"><strong>Alert Recipients:</strong></p>
+                {% if alert_plan %}
+                <ul class="mb-1">
+                    {% for person in alert_plan %}
+                    <li>
+                        {% if person.user %}
+                        <strong>{{ person.user.full_name or person.user.username }}</strong> — {{ person.email }}<br>
+                        <span class="text-muted">{{ person.user.factory.name if person.user.factory else "No factory" }} · {{ person.user.department.name if person.user.department else "No department" }} · {{ format_sources(person.sources) }}</span>
+                        {% else %}
+                        {{ person.email }} <span class="text-muted">({{ format_sources(person.sources) }})</span>
+                        {% endif %}
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="text-muted mb-1">No one will be emailed until an assigned person, department, company, or the uploader has a valid email.</p>
+                {% endif %}
+                <p class="text-muted mb-0">Automated alerts go only to users in this document's factory and department. Sent messages are listed under Alert History.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">Files</div>
+    <table class="table mb-0">
+        <thead><tr><th>Issue Date</th><th>Expiry Date</th><th>Uploaded</th><th>File</th></tr></thead>
+        <tbody>
+            {% for v in versions %}
+            <tr>
+                <td>{{ v.issue_date or '-' }}</td>
+                <td>{{ v.expiry_date or '-' }}</td>
+                <td>{{ v.uploaded_at.strftime('%d-%b-%Y') if v.uploaded_at else '-' }}</td>
+                <td>
+                    <a href="{{ url_for('documents.view_file', version_id=v.id) }}" target="_blank" class="btn btn-sm btn-outline-secondary">View</a>
+                    <a href="{{ url_for('documents.download_file', version_id=v.id) }}" class="btn btn-sm btn-outline-primary">Download</a>
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="4" class="text-center text-muted py-4">No files uploaded yet.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

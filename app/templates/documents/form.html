@@ -1,0 +1,353 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block page_title %}{{ title }}{% endblock %}
+
+{% block content %}
+{% from "_macros.html" import field_errors %}
+<div class="row justify-content-center">
+    <div class="col-lg-9">
+        <div class="card">
+            <div class="card-body p-4">
+                <form method="POST" enctype="multipart/form-data">
+                    {{ form.hidden_tag() }}
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            {{ form.factory_id.label(class="form-label") }}
+                            {{ form.factory_id(class="form-select", id="factory_id") }}
+                            {{ field_errors(form.factory_id) }}
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            {{ form.department_id.label(class="form-label") }}
+                            {{ form.department_id(class="form-select", id="department_id") }}
+                            {{ field_errors(form.department_id) }}
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        {{ form.doc_name.label(class="form-label") }}
+                        {{ form.doc_name(class="form-control") }}
+                        {{ field_errors(form.doc_name) }}
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            {{ form.doc_type.label(class="form-label") }}
+                            {{ form.doc_type(class="form-control", list="doc_type_list") }}
+                            <datalist id="doc_type_list">
+                                {% for s in doc_type_suggestions %}<option value="{{ s }}">{% endfor %}
+                            </datalist>
+                            {{ field_errors(form.doc_type) }}
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            {{ form.cert_no.label(class="form-label") }} <span class="text-danger">*</span>
+                            {{ form.cert_no(class="form-control", required=true) }}
+                            {{ field_errors(form.cert_no) }}
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            {{ form.issue_date.label(class="form-label") }}
+                            {{ form.issue_date(class="form-control") }}
+                            {{ field_errors(form.issue_date) }}
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            {{ form.expiry_date.label(class="form-label") }}
+                            {{ form.expiry_date(class="form-control", id="expiry_date") }}
+                            {{ field_errors(form.expiry_date) }}
+                        </div>
+                        <div class="col-md-4 mb-3 d-flex align-items-end">
+                            <div class="form-check">
+                                {{ form.no_expiry(class="form-check-input", id="no_expiry") }}
+                                {{ form.no_expiry.label(class="form-check-label") }}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            {{ form.issuing_authority.label(class="form-label") }}
+                            {{ form.issuing_authority(class="form-control") }}
+                            {{ field_errors(form.issuing_authority) }}
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            {{ form.responsible_person.label(class="form-label") }}
+                            {{ form.responsible_person(class="form-control") }}
+                            {{ field_errors(form.responsible_person) }}
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        {{ form.renewal_status.label(class="form-label") }}
+                        {{ form.renewal_status(class="form-select") }}
+                        {{ field_errors(form.renewal_status) }}
+                    </div>
+
+                    <div class="mb-3">
+                        {{ form.remarks.label(class="form-label") }}
+                        {{ form.remarks(class="form-control", rows=2) }}
+                        {{ field_errors(form.remarks) }}
+                    </div>
+
+                    {% if current_user.role.name in ["Super Admin", "Administration"] %}
+                    <hr>
+                    <p class="text-muted small mb-2">Regulatory reference (optional) — link this document to a specific government office and service, from the list managed under Regulatory Directory.</p>
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            {{ form.category_id.label(class="form-label") }}
+                            {{ form.category_id(class="form-select", id="category_id") }}
+                            {{ field_errors(form.category_id) }}
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            {{ form.authority_id.label(class="form-label") }}
+                            {{ form.authority_id(class="form-select", id="authority_id") }}
+                            {{ field_errors(form.authority_id) }}
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            {{ form.service_id.label(class="form-label") }}
+                            {{ form.service_id(class="form-select", id="service_id") }}
+                            {{ field_errors(form.service_id) }}
+                        </div>
+                    </div>
+                    <hr>
+                    {% endif %}
+
+                    <div class="mb-3">
+                        <label class="form-label">Alert Recipients</label>
+                        <p class="form-text mt-0">Only users in the selected factory and department are listed. The department group mailbox is department-wide and is always included for every factory. Automated weekly, emergency, and manual alerts use this same match.</p>
+                        <div id="alert_group_mailbox" class="alert alert-info py-2 px-3 mb-2{% if not group_emails %} d-none{% endif %}">
+                            <strong>Department group mailbox:</strong>
+                            <span id="alert_group_mailbox_addresses">
+                                {% for address in group_emails %}
+                                <span class="badge bg-secondary">{{ address }}</span>
+                                {% endfor %}
+                            </span>
+                            <br>
+                            <small>This address always receives alerts for this document — automated and manual — because the selected department has a group mailbox. It is not filtered by factory.</small>
+                        </div>
+                        <div id="alert_recipient_list" class="border rounded p-3" style="max-height:240px; overflow:auto;">
+                            {% if not form.factory_id.data or not form.department_id.data %}
+                            <div class="text-muted">Select a factory and a department to see matching users.</div>
+                            {% else %}
+                            {% for user in eligible_recipients %}
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" name="alert_recipients" value="{{ user.id }}" id="recip_{{ user.id }}"
+                                    {% if form.alert_recipients.data and user.id in form.alert_recipients.data %}checked{% endif %}>
+                                <label class="form-check-label" for="recip_{{ user.id }}">
+                                    <strong>{{ user.full_name or user.username }}</strong> &mdash; {{ user.email }}<br>
+                                    <span class="text-muted">{{ user.factory.name if user.factory else "No factory" }} &middot; {{ user.department.name if user.department else "No department" }}</span>
+                                </label>
+                            </div>
+                            {% endfor %}
+                            {% for user in ineligible_recipients %}
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" disabled>
+                                <label class="form-check-label text-muted">
+                                    {{ user.full_name or user.username }} &mdash; {{ user.factory.name if user.factory else "No factory" }} &middot; {{ user.department.name if user.department else "No department" }}. No valid email.
+                                </label>
+                            </div>
+                            {% endfor %}
+                            {% if not eligible_recipients and not ineligible_recipients %}
+                            <div class="text-muted">No users belong to this factory and department.</div>
+                            {% endif %}
+                            {% endif %}
+                        </div>
+                        {{ field_errors(form.alert_recipients) }}
+                    </div>
+
+                    <div class="mb-3">
+                        {{ form.file.label(class="form-label") }}
+                        {{ form.file(class="form-control") }}
+                        <div class="form-text">Allowed: PDF, JPG, PNG, DOCX, XLSX (max 10 MB).</div>
+                        {{ field_errors(form.file) }}
+                    </div>
+
+                    {{ form.submit(class="btn btn-primary") }}
+                    <a href="{{ url_for('documents.list_documents') }}" class="btn btn-outline-secondary">Cancel</a>
+                </form>
+                <hr>
+                <form method="POST" action="{{ url_for('documents.extract_upload') }}" enctype="multipart/form-data">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <label class="form-label">Extract Data from Document</label>
+                    <p class="form-text">Optional. Reads a PDF, JPG, or PNG and suggests fields. Nothing is saved until you confirm.</p>
+                    <input type="file" name="file" accept=".pdf,.jpg,.jpeg,.png" class="form-control mb-2" required>
+                    <button class="btn btn-outline-primary" type="submit">Extract Data from Document</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const factorySelect = document.getElementById("factory_id");
+    const departmentSelect = document.getElementById("department_id");
+    const currentDepartmentId = "{{ form.department_id.data or 0 }}";
+
+    function loadDepartments(factoryId, selectedId) {
+        fetch("/documents/api/departments/" + factoryId)
+            .then(r => r.json())
+            .then(data => {
+                departmentSelect.innerHTML = "";
+                const none = document.createElement("option");
+                none.value = "0"; none.text = "-- None --";
+                departmentSelect.appendChild(none);
+                data.forEach(dept => {
+                    const o = document.createElement("option");
+                    o.value = dept.id; o.text = dept.name;
+                    if (String(dept.id) === String(selectedId)) o.selected = true;
+                    departmentSelect.appendChild(o);
+                });
+            });
+    }
+
+    const recipientList = document.getElementById("alert_recipient_list");
+    const groupMailboxBanner = document.getElementById("alert_group_mailbox");
+    const groupMailboxAddresses = document.getElementById("alert_group_mailbox_addresses");
+
+    function renderGroupMailbox(groupEmails) {
+        if (!groupMailboxBanner || !groupMailboxAddresses) return;
+        if (!groupEmails || !groupEmails.length) {
+            groupMailboxBanner.classList.add("d-none");
+            groupMailboxAddresses.textContent = "";
+            return;
+        }
+        groupMailboxAddresses.innerHTML = "";
+        groupEmails.forEach(entry => {
+            const badge = document.createElement("span");
+            badge.className = "badge bg-secondary me-1";
+            badge.textContent = entry.email;
+            groupMailboxAddresses.appendChild(badge);
+            groupMailboxAddresses.appendChild(document.createTextNode(" "));
+        });
+        groupMailboxBanner.classList.remove("d-none");
+    }
+
+    function loadAlertUsers() {
+        if (!recipientList || !factorySelect || !departmentSelect) return;
+        const factoryId = factorySelect.value;
+        const departmentId = departmentSelect.value;
+        if (!factoryId || !departmentId || departmentId === "0") {
+            recipientList.innerHTML = '<div class="text-muted">Select a factory and a department to see matching users.</div>';
+            renderGroupMailbox([]);
+            return;
+        }
+        const checked = new Set(Array.from(recipientList.querySelectorAll("input:checked")).map(input => input.value));
+        fetch("/documents/api/alert-users?factory_id=" + factoryId + "&department_id=" + departmentId)
+            .then(response => response.json())
+            .then(payload => {
+                const users = (payload && payload.users) || [];
+                const groupEmails = (payload && payload.group_emails) || [];
+                renderGroupMailbox(groupEmails);
+                if (!users.length) {
+                    recipientList.innerHTML = '<div class="text-muted">No users belong to this factory and department.</div>';
+                    return;
+                }
+                recipientList.innerHTML = "";
+                users.forEach(user => {
+                    const row = document.createElement("div");
+                    row.className = "form-check mb-2";
+                    const input = document.createElement("input");
+                    input.className = "form-check-input";
+                    input.type = "checkbox";
+                    input.id = "recip_" + user.id;
+                    if (user.selectable) {
+                        input.name = "alert_recipients";
+                        input.value = user.id;
+                        if (checked.has(String(user.id))) input.checked = true;
+                    } else {
+                        input.disabled = true;
+                    }
+                    const label = document.createElement("label");
+                    label.className = "form-check-label" + (user.selectable ? "" : " text-muted");
+                    label.htmlFor = input.id;
+                    const nameEl = document.createElement("strong");
+                    nameEl.textContent = user.name || "";
+                    label.appendChild(nameEl);
+                    if (user.email) {
+                        label.appendChild(document.createTextNode(" — " + user.email));
+                    }
+                    label.appendChild(document.createElement("br"));
+                    const meta = document.createElement("span");
+                    meta.className = "text-muted";
+                    meta.textContent = (user.factory || "") + " · " + (user.department || "")
+                        + (user.selectable ? "" : ". No valid email.");
+                    label.appendChild(meta);
+                    row.appendChild(input);
+                    row.appendChild(label);
+                    recipientList.appendChild(row);
+                });
+            });
+    }
+    factorySelect.addEventListener("change", loadAlertUsers);
+    departmentSelect.addEventListener("change", loadAlertUsers);
+
+    window.addEventListener("DOMContentLoaded", function () {
+        loadDepartments(factorySelect.value, currentDepartmentId);
+        const noExpiry = document.getElementById("no_expiry");
+        const expiry = document.getElementById("expiry_date");
+        function sync() { expiry.disabled = noExpiry.checked; if (noExpiry.checked) expiry.value = ""; }
+        noExpiry.addEventListener("change", sync);
+        sync();
+    });
+
+    const categorySelect = document.getElementById("category_id");
+    const authoritySelect = document.getElementById("authority_id");
+    const serviceSelect = document.getElementById("service_id");
+    const currentAuthorityId = "{{ form.authority_id.data or 0 }}";
+    const currentServiceId = "{{ form.service_id.data or 0 }}";
+
+    if (categorySelect && authoritySelect && serviceSelect) {
+        function loadAuthorities(categoryId, selectedId, thenLoadServiceId) {
+            fetch("/regulatory/api/authorities/" + categoryId)
+                .then(response => response.json())
+                .then(data => {
+                    authoritySelect.innerHTML = "";
+                    const noneOption = document.createElement("option");
+                    noneOption.value = "0";
+                    noneOption.text = "-- None --";
+                    authoritySelect.appendChild(noneOption);
+                    data.forEach(authority => {
+                        const option = document.createElement("option");
+                        option.value = authority.id;
+                        option.text = authority.name;
+                        if (String(authority.id) === String(selectedId)) option.selected = true;
+                        authoritySelect.appendChild(option);
+                    });
+                    loadServices(authoritySelect.value, thenLoadServiceId || "0");
+                });
+        }
+        function loadServices(authorityId, selectedId) {
+            fetch("/regulatory/api/services/" + authorityId)
+                .then(response => response.json())
+                .then(data => {
+                    serviceSelect.innerHTML = "";
+                    const noneOption = document.createElement("option");
+                    noneOption.value = "0";
+                    noneOption.text = "-- None --";
+                    serviceSelect.appendChild(noneOption);
+                    data.forEach(service => {
+                        const option = document.createElement("option");
+                        option.value = service.id;
+                        option.text = service.name;
+                        if (String(service.id) === String(selectedId)) option.selected = true;
+                        serviceSelect.appendChild(option);
+                    });
+                });
+        }
+        categorySelect.addEventListener("change", function () {
+            loadAuthorities(this.value, "0", "0");
+        });
+        authoritySelect.addEventListener("change", function () {
+            loadServices(this.value, "0");
+        });
+        window.addEventListener("DOMContentLoaded", function () {
+            if (categorySelect.value && categorySelect.value !== "0") {
+                loadAuthorities(categorySelect.value, currentAuthorityId, currentServiceId);
+            }
+        });
+    }
+</script>
+{% endblock %}

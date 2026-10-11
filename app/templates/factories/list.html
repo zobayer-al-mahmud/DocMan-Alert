@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Factories{% endblock %}
+{% block page_title %}Factories{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div></div>
+    <a href="{{ url_for('admin.add_factory') }}" class="btn btn-accent">+ Add Factory</a>
+</div>
+
+<div class="card">
+<table class="table mb-0">
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Company</th>
+            <th>Location</th>
+            <th>Departments</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for factory in factories %}
+        <tr>
+            <td>{{ factory.name }}</td>
+            <td>{{ factory.company.name }}</td>
+            <td>{{ factory.location }}</td>
+            <td>{{ factory.departments|length }}</td>
+            <td>
+                <a href="{{ url_for('admin.edit_factory', factory_id=factory.id) }}" class="btn btn-sm btn-secondary">Edit</a>
+                <form method="POST" action="{{ url_for('admin.delete_factory', factory_id=factory.id) }}" style="display:inline;" onsubmit="return confirm('Are you sure?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                </form>
+            </td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="5" class="text-center text-muted py-4">No factories added yet.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+{% endblock %}

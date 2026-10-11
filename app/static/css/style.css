@@ -1,0 +1,271 @@
+/* =========================================================
+   DocMan Alert — Design System
+   Palette grounded in the garments/textile industry context:
+   deep navy (trust, corporate) + warm gold accent (thread/textile),
+   on a quiet neutral canvas. One typeface (Inter) throughout.
+   ========================================================= */
+
+:root {
+  --navy-900: #0F1B33;
+  --navy-800: #14213D;
+  --navy-700: #1C2B4A;
+  --navy-600: #263A5C;
+
+  --gold-500: #C99A3B;
+  --gold-600: #B4842A;
+
+  --success: #2E7D45;
+  --success-bg: #E8F5EC;
+  --warning: #B8791A;
+  --warning-bg: #FDF3E2;
+  --danger: #B23A2E;
+  --danger-bg: #FBEAE8;
+  --info: #2C6E8F;
+
+  --bg-canvas: #F4F6F9;
+  --bg-card: #FFFFFF;
+  --border-subtle: #E4E8EF;
+
+  --text-primary: #1F2937;
+  --text-muted: #6B7280;
+  --text-on-dark: #E7EAF0;
+  --text-on-dark-muted: #9AA6BD;
+
+  --sidebar-width: 240px;
+  --topbar-height: 64px;
+
+  --radius: 10px;
+  --shadow-card: 0 1px 3px rgba(15, 27, 51, 0.08), 0 1px 2px rgba(15, 27, 51, 0.06);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--bg-canvas);
+  color: var(--text-primary);
+  font-size: 14.5px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+
+a { color: var(--navy-700); text-decoration: none; }
+a:hover { color: var(--gold-600); }
+
+/* ---------- App shell ---------- */
+.app-shell { display: flex; min-height: 100vh; }
+
+.sidebar {
+  width: var(--sidebar-width);
+  flex-shrink: 0;
+  background: var(--navy-900);
+  color: var(--text-on-dark);
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  top: 0; bottom: 0; left: 0;
+  overflow: hidden; /* safety net: never let content bleed past the fixed box */
+}
+
+.sidebar-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 20px 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  background: #FFFFFF;
+}
+.sidebar-brand img.brand-logo { height: 30px; width: auto; display: block; }
+.sidebar-brand .brand-text { line-height: 1.2; }
+.sidebar-brand .brand-text .product { font-size: 11.5px; color: var(--navy-700); font-weight: 600; letter-spacing: 0.02em; }
+
+.sidebar-nav { flex: 1; min-height: 0; padding: 14px 10px; overflow-y: auto; }
+.sidebar-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-on-dark-muted);
+  padding: 14px 12px 6px;
+  letter-spacing: 0.02em;
+}
+.sidebar-nav a.nav-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-on-dark);
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 13.5px;
+  font-weight: 500;
+  margin-bottom: 2px;
+}
+.sidebar-nav a.nav-link:hover { background: rgba(255,255,255,0.06); color: #fff; }
+.sidebar-nav a.nav-link.active { background: var(--gold-500); color: var(--navy-900); font-weight: 600; }
+
+.sidebar-footer {
+  padding: 14px 20px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  font-size: 11px;
+  color: var(--text-on-dark-muted);
+}
+
+.main-col {
+  margin-left: var(--sidebar-width);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.topbar {
+  height: var(--topbar-height);
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+.topbar .page-title { font-size: 17px; font-weight: 600; }
+.topbar .user-chip { display: flex; align-items: center; gap: 12px; }
+.topbar .user-chip .role-badge {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--navy-700);
+  background: #EEF1F7;
+  padding: 3px 9px;
+  border-radius: 20px;
+}
+
+.content-area { padding: 24px; flex: 1; }
+
+.page-footer {
+  padding: 14px 24px;
+  font-size: 12px;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-card);
+}
+
+/* ---------- Cards ---------- */
+.card {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  background: var(--bg-card);
+}
+.card-header {
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border-subtle);
+  font-weight: 600;
+  font-size: 13.5px;
+  padding: 12px 16px;
+}
+
+.stat-card {
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-card);
+  padding: 18px 20px;
+  border-left: 4px solid var(--navy-700);
+}
+.stat-card .stat-label { font-size: 12.5px; color: var(--text-muted); font-weight: 500; margin-bottom: 6px; }
+.stat-card .stat-value { font-size: 30px; font-weight: 700; line-height: 1; }
+.stat-card.stat-success { border-left-color: var(--success); }
+.stat-card.stat-success .stat-value { color: var(--success); }
+.stat-card.stat-warning { border-left-color: var(--warning); }
+.stat-card.stat-warning .stat-value { color: var(--warning); }
+.stat-card.stat-danger { border-left-color: var(--danger); }
+.stat-card.stat-danger .stat-value { color: var(--danger); }
+
+/* ---------- Tables ---------- */
+.table { margin-bottom: 0; font-size: 13.5px; }
+.table thead th {
+  background: #FAFBFD;
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 10px 14px;
+}
+.table tbody td { padding: 10px 14px; vertical-align: middle; border-color: var(--border-subtle); }
+.table tbody tr:hover { background: #FAFBFD; }
+
+/* ---------- Buttons ---------- */
+.btn-primary {
+  background: var(--navy-700);
+  border-color: var(--navy-700);
+}
+.btn-primary:hover { background: var(--navy-800); border-color: var(--navy-800); }
+.btn-outline-primary { color: var(--navy-700); border-color: var(--navy-700); }
+.btn-outline-primary:hover { background: var(--navy-700); border-color: var(--navy-700); }
+.btn-accent {
+  background: var(--gold-500);
+  border-color: var(--gold-500);
+  color: var(--navy-900);
+  font-weight: 600;
+}
+.btn-accent:hover { background: var(--gold-600); border-color: var(--gold-600); color: var(--navy-900); }
+
+/* ---------- Badges (status pills) ---------- */
+.badge-status {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.badge-valid { background: var(--success-bg); color: var(--success); }
+.badge-expiring-90 { background: #EEF6E9; color: #5B8A2F; }
+.badge-expiring-60 { background: var(--warning-bg); color: var(--warning); }
+.badge-expiring-30 { background: #FCE9DC; color: #C1621C; }
+.badge-expiring-7 { background: #FBE3EA; color: #B23A6B; }
+.badge-expired { background: var(--danger-bg); color: var(--danger); }
+
+/* ---------- Alerts ---------- */
+.alert { border-radius: var(--radius); border: 1px solid transparent; font-size: 13.5px; }
+.alert-success { background: var(--success-bg); color: var(--success); border-color: #CFE8D6; }
+.alert-warning { background: var(--warning-bg); color: var(--warning); border-color: #F3DFB8; }
+.alert-danger { background: var(--danger-bg); color: var(--danger); border-color: #F0CCC7; }
+.alert-info { background: #E7F1F6; color: var(--info); border-color: #C9E1EB; }
+
+/* ---------- Login page ---------- */
+.login-wrap {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(160deg, var(--navy-900) 0%, var(--navy-700) 100%);
+}
+.login-card {
+  width: 100%;
+  max-width: 380px;
+  background: var(--bg-card);
+  border-radius: 14px;
+  padding: 36px 32px;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.25);
+}
+.login-card img.login-logo { width: 120px; height: auto; display: block; margin: 0 auto 14px; }
+.login-card h4 { text-align: center; margin-bottom: 2px; }
+.login-card .login-sub { text-align: center; color: var(--text-muted); font-size: 12.5px; margin-bottom: 24px; }
+
+.nav-sublink {
+  display: block;
+  padding: 6px 16px 6px 28px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.72);
+  text-decoration: none;
+}
+.nav-sublink:hover { color: #fff; }

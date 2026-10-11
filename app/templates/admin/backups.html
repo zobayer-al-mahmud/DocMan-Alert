@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Backups{% endblock %}
+{% block page_title %}Document Backups{% endblock %}
+
+{% block content %}
+<p class="text-muted">Each backup is a zip of the database and every uploaded file: factory documents, employee licenses, and health checkups. The daily 18:30 job creates the same backup. Copies older than {{ retention }} days are removed.</p>
+
+<form method="POST" class="mb-3">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn btn-primary" type="submit">Create backup now</button>
+</form>
+
+<div class="card">
+<table class="table mb-0">
+    <thead>
+        <tr><th>Backup</th><th>Created</th><th>Size</th><th></th></tr>
+    </thead>
+    <tbody>
+        {% for item in backups %}
+        <tr>
+            <td>{{ item.name }}</td>
+            <td>{{ item.modified.strftime('%d-%b-%Y %I:%M %p') }}</td>
+            <td>{{ (item.size / 1024)|round(1) }} KB</td>
+            <td><a href="{{ url_for('admin.download_backup', filename=item.name) }}">Download</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="text-center text-muted py-4">No backups yet.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+{% endblock %}

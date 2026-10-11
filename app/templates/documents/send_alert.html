@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Send alert{% endblock %}
+{% block page_title %}Send document alert{% endblock %}
+
+{% block content %}
+<p class="mb-3"><a href="{{ url_for('documents.view_document', document_id=document.id) }}">&larr; Back to document</a></p>
+<div class="card mb-3">
+    <div class="card-body">
+        <h5 class="mb-2">{{ document.doc_name }}</h5>
+        <p class="mb-1"><strong>Factory:</strong> {{ document.factory.name if document.factory else '-' }}</p>
+        <p class="mb-1"><strong>Department:</strong> {{ document.department.name if document.department else '-' }}</p>
+        <p class="mb-1"><strong>Certificate / License No.:</strong> {{ document.cert_no or '-' }}</p>
+        <p class="mb-0"><strong>Status:</strong> {{ document.status }}</p>
+    </div>
+</div>
+<div class="card">
+    <div class="card-body">
+        <p class="text-muted">Only users in <strong>{{ document.factory.name if document.factory else "this factory" }}</strong> and <strong>{{ document.department.name if document.department else "this department" }}</strong> are listed. The department group mailbox is listed separately and is not filtered by factory. The email names only this document.</p>
+
+        {% if users or group_emails %}
+        <form method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="border rounded p-3 mb-3" style="max-height:320px; overflow:auto;">
+                {% if group_emails %}
+                <div class="mb-2 pb-2 border-bottom">
+                    {% for address in group_emails %}
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" name="group_email" value="{{ address }}" id="group_{{ loop.index }}"
+                            {% if address.lower() in selected_group_keys %}checked{% endif %}>
+                        <label class="form-check-label" for="group_{{ loop.index }}">
+                            <strong>Department group mailbox</strong> &mdash; {{ address }}<br>
+                            <span class="text-muted">{{ document.department.name if document.department else "" }} &middot; All factories</span>
+                        </label>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                {% if users %}
+                {% for user in users %}
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" name="recipient_id" value="{{ user.id }}" id="user_{{ user.id }}"
+                        {% if user.id in selected_ids %}checked{% endif %}>
+                    <label class="form-check-label" for="user_{{ user.id }}">
+                        <strong>{{ user.full_name or user.username }}</strong> &mdash; {{ user.email }}<br>
+                        <span class="text-muted">{{ user.factory.name if user.factory else "No factory" }} &middot; {{ user.department.name if user.department else "No department" }}</span>
+                    </label>
+                </div>
+                {% endfor %}
+                {% else %}
+                <p class="text-muted mb-0">No users belong to this document's factory and department.</p>
+                {% endif %}
+            </div>
+            <button class="btn btn-primary" type="submit">Send this alert</button>
+            <a href="{{ url_for('documents.view_document', document_id=document.id) }}" class="btn btn-outline-secondary">Cancel</a>
+        </form>
+        {% else %}
+        <p class="text-muted mb-0">No users belong to this document's factory and department, and the department has no group mailbox. There is no recipient for this alert.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

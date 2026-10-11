@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+
+{% if expired_count > 0 or expiring_count > 0 %}
+<div class="alert alert-warning">
+    {% if expired_count > 0 %}<strong>{{ expired_count }}</strong> document(s) have already expired. {% endif %}
+    {% if expiring_count > 0 %}<strong>{{ expiring_count }}</strong> document(s) are expiring within 90 days.{% endif %}
+</div>
+{% endif %}
+
+<h5 class="section-heading mb-2">Factory Documents</h5>
+<div class="row g-3 mb-4">
+    <div class="col-6 col-lg">
+        <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value">{{ total_documents }}</div></div>
+    </div>
+    <div class="col-6 col-lg">
+        <div class="stat-card stat-success"><div class="stat-label">Valid</div><div class="stat-value">{{ valid_count }}</div></div>
+    </div>
+    <div class="col-6 col-lg">
+        <div class="stat-card stat-warning"><div class="stat-label">Expiring in 90 Days</div><div class="stat-value">{{ bucket_counts.get('Expiring in 90 Days', 0) }}</div></div>
+    </div>
+    <div class="col-6 col-lg">
+        <div class="stat-card stat-warning"><div class="stat-label">Expiring in 60 Days</div><div class="stat-value">{{ bucket_counts.get('Expiring in 60 Days', 0) }}</div></div>
+    </div>
+    <div class="col-6 col-lg">
+        <div class="stat-card stat-warning"><div class="stat-label">Expiring in 30 Days</div><div class="stat-value">{{ bucket_counts.get('Expiring in 30 Days', 0) }}</div></div>
+    </div>
+    <div class="col-6 col-lg">
+        <div class="stat-card stat-danger"><div class="stat-label">Expiring in 7 Days</div><div class="stat-value">{{ bucket_counts.get('Expiring in 7 Days', 0) }}</div></div>
+    </div>
+    <div class="col-6 col-lg">
+        <div class="stat-card stat-danger"><div class="stat-label">Expired</div><div class="stat-value">{{ expired_count }}</div></div>
+    </div>
+</div>
+
+<h5 class="section-heading mb-2">Employee Compliance</h5>
+<div class="row g-3 mb-4">
+    <div class="col-6 col-lg">
+        <div class="stat-card"><div class="stat-label">Active Employees</div><div class="stat-value">{{ active_employees }}</div></div>
+    </div>
+    <div class="col-6 col-lg">
+        <div class="stat-card stat-warning"><div class="stat-label">Licenses Expiring</div><div class="stat-value">{{ emp_license_expiring }}</div></div>
+    </div>
+    <div class="col-6 col-lg">
+        <div class="stat-card stat-danger"><div class="stat-label">Licenses Expired</div><div class="stat-value">{{ emp_license_expired }}</div></div>
+    </div>
+    <div class="col-6 col-lg">
+        <div class="stat-card stat-warning"><div class="stat-label">Checkups Expiring</div><div class="stat-value">{{ checkup_expiring }}</div></div>
+    </div>
+    <div class="col-6 col-lg">
+        <div class="stat-card stat-danger"><div class="stat-label">Checkups Expired</div><div class="stat-value">{{ checkup_expired }}</div></div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-lg-7">
+        <div class="card">
+            <div class="card-header">Factory-wise Status</div>
+            <div class="card-body p-0">
+                <table class="table mb-0">
+                    <thead>
+                        <tr><th>Factory</th><th>Total</th><th>Valid</th><th>Expiring</th><th>Expired</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for f in factory_stats %}
+                        <tr>
+                            <td>{{ f.name }}</td>
+                            <td>{{ f.total }}</td>
+                            <td class="text-success">{{ f.valid }}</td>
+                            <td class="text-warning">{{ f.expiring }}</td>
+                            <td class="text-danger">{{ f.expired }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="5" class="text-center text-muted py-4">No factories in scope.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-5">
+        <div class="card">
+            <div class="card-header">Needs Attention</div>
+            <div class="card-body p-0">
+                <table class="table mb-0">
+                    <thead>
+                        <tr><th>Record</th><th>Where</th><th>Expiry</th><th>Status</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for item in attention_items %}
+                        <tr>
+                            <td>
+                                {% if item.url %}<a href="{{ item.url }}">{{ item.name }}</a>{% else %}{{ item.name }}{% endif %}
+                                <div class="text-muted small">{{ item.kind }}</div>
+                            </td>
+                            <td>{{ item.where }}</td>
+                            <td>{{ item.expiry or '-' }}</td>
+                            <td>
+                                {% if item.status == "Expired" %}
+                                    <span class="badge-status badge-expired">Expired</span>
+                                {% else %}
+                                    <span class="badge-status badge-expiring-30">{{ item.status }}</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" class="text-center text-muted py-4">No critical items right now.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

@@ -1,0 +1,107 @@
+# Replaces the Windows Task Scheduler jobs with Kubernetes CronJobs.
+# Times are Bangladesh Standard Time via spec.timeZone (k8s >= 1.27).
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: compliance-backup
+  namespace: compliance
+spec:
+  schedule: "30 18 * * *"          # daily 18:30 BST
+  timeZone: "Asia/Dhaka"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: backup
+              image: compliance-tracker:1.0
+              imagePullPolicy: Never
+              command: ["python", "scripts/backup.py"]
+              envFrom:
+                - secretRef:
+                    name: compliance-secrets
+              env:
+                - { name: TZ, value: "Asia/Dhaka" }
+                - { name: UPLOAD_FOLDER, value: "/data/uploads" }
+                - { name: BACKUP_FOLDER, value: "/data/backups" }
+              volumeMounts:
+                - { name: data, mountPath: /data }
+          volumes:
+            - name: data
+              persistentVolumeClaim:
+                claimName: compliance-data
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: compliance-status-recalc
+  namespace: compliance
+spec:
+  schedule: "0 9 * * *"            # daily 09:00 BST (status recalc + emergency alert)
+  timeZone: "Asia/Dhaka"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: status-recalc
+              image: compliance-tracker:1.0
+              imagePullPolicy: Never
+              command: ["python", "scripts/scheduled_status_recalc.py"]
+              envFrom:
+                - secretRef:
+                    name: compliance-secrets
+              env:
+                - { name: TZ, value: "Asia/Dhaka" }
+                - { name: UPLOAD_FOLDER, value: "/data/uploads" }
+                - { name: BACKUP_FOLDER, value: "/data/backups" }
+              volumeMounts:
+                - { name: data, mountPath: /data }
+          volumes:
+            - name: data
+              persistentVolumeClaim:
+                claimName: compliance-data
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: compliance-weekly-alert
+  namespace: compliance
+spec:
+  schedule: "0 9 * * 6"           # Saturday 09:00 BST (weekly compliance digest)
+  timeZone: "Asia/Dhaka"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: weekly-alert
+              image: compliance-tracker:1.0
+              imagePullPolicy: Never
+              command: ["python", "scripts/scheduled_email_alert.py"]
+              envFrom:
+                - secretRef:
+                    name: compliance-secrets
+              env:
+                - { name: TZ, value: "Asia/Dhaka" }
+                - { name: UPLOAD_FOLDER, value: "/data/uploads" }
+                - { name: BACKUP_FOLDER, value: "/data/backups" }
+              volumeMounts:
+                - { name: data, mountPath: /data }
+          volumes:
+            - name: data
+              persistentVolumeClaim:
+                claimName: compliance-data

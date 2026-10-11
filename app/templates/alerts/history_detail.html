@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Alert email{% endblock %}
+{% block page_title %}Alert email{% endblock %}
+
+{% block content %}
+<p class="mb-3"><a href="{{ url_for('alerts.list_history') }}">&larr; Alert History</a></p>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6">
+                <p><strong>Sent (BST):</strong> {{ to_bst(email.sent_at) }}</p>
+                <p><strong>Type:</strong> {{ type_labels.get(email.alert_type, email.alert_type) }}</p>
+                <p><strong>From:</strong> {{ email.sender or '-' }}</p>
+            </div>
+            <div class="col-md-6">
+                <p><strong>To:</strong>
+                    {% if email.recipient_name %}{{ email.recipient_name }} — {% endif %}{{ email.recipient_email }}
+                </p>
+                <p><strong>Subject:</strong> {{ email.subject }}</p>
+                <p><strong>Result:</strong>
+                    {% if email.status == "sent" %}
+                    <span class="badge-status badge-valid">Sent</span>
+                    {% else %}
+                    <span class="badge-status badge-expired">Failed</span>
+                    {% if email.error_detail %}<span class="text-muted">{{ email.error_detail }}</span>{% endif %}
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">Records in this email ({{ items|length }})</div>
+    <table class="table mb-0">
+        <thead>
+            <tr>
+                <th>Record</th>
+                <th>Company</th>
+                <th>Factory</th>
+                <th>Department</th>
+                <th>Expiry</th>
+                <th>Status</th>
+                <th>Why this recipient</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in items %}
+            <tr>
+                <td>
+                    {{ item.title }}
+                    <div class="text-muted small">{{ item.record_type }}</div>
+                </td>
+                <td>{{ item.company_name or '-' }}</td>
+                <td>{{ item.factory_name or '-' }}</td>
+                <td>{{ item.department_name or '-' }}</td>
+                <td>{% if item.expiry_date %}{{ item.expiry_date.strftime('%d-%b-%Y') }}{% else %}-{% endif %}</td>
+                <td>{{ item.record_status or '-' }}</td>
+                <td>{{ item.sources or '-' }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" class="text-center text-muted py-4">This message did not name a compliance record.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

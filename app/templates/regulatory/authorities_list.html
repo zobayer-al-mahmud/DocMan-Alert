@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Regulatory Authorities{% endblock %}
+{% block page_title %}Regulatory Authorities{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div></div>
+    <a href="{{ url_for('regulatory.add_authority') }}" class="btn btn-accent">+ Add Authority</a>
+</div>
+
+<div class="card">
+<table class="table mb-0">
+    <thead>
+        <tr>
+            <th>Authority / Office Name</th>
+            <th>Category</th>
+            <th>Services</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for authority in authorities %}
+        <tr>
+            <td>{{ authority.name }}</td>
+            <td>{{ authority.category.name }}</td>
+            <td>{{ authority.services|length }}</td>
+            <td>
+                <a href="{{ url_for('regulatory.edit_authority', authority_id=authority.id) }}" class="btn btn-sm btn-secondary">Edit</a>
+                <form method="POST" action="{{ url_for('regulatory.delete_authority', authority_id=authority.id) }}" style="display:inline;" onsubmit="return confirm('Are you sure?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                </form>
+            </td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="4" class="text-center text-muted py-4">No regulatory authorities added yet.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+{% endblock %}

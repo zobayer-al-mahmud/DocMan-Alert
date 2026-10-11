@@ -1,0 +1,64 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# --- Virtual environments ---
+venv/
+.venv/
+env/
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# --- Editors / IDEs ---
+.vscode/
+.idea/
+*.swp
+*~
+
+# --- Session / local tooling ---
+.claude/
+
+# --- Secrets & env (never commit) ---
+.env
+.env.local
+*.secret
+*.pem
+*.key
+id_*
+id_*.pub
+
+# --- Runtime data on this machine (never commit production/dev data) ---
+instance/*.db
+instance/*.db-shm
+instance/*.db-wal
+instance/*.bak
+instance/*.backup
+instance/ocr_staging/
+instance/ocr_test_files/
+app/uploads/
+app/static/uploads/
+
+# --- Backups & snapshots (ship real business data if committed) ---
+backups/
+_server_pre_wipe_backup/
+pre-deploy-backups/
+
+# --- Logs ---
+*.log
+
+# --- Tesseract data: 16 MB, re-installed in the Docker image via apt-get ---
+tessdata/
+
+# --- Private QA notes with historical admin password references ---
+QA_TEST_REPORT.md
+
+# --- Nothing else here; everything intentional stays tracked ---

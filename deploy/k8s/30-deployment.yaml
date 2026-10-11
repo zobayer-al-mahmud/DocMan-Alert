@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: compliance-tracker
+  namespace: compliance
+  labels:
+    app: compliance-tracker
+spec:
+  replicas: 1                 # SQLite is single-writer: never run more than 1
+  strategy:
+    type: Recreate            # avoid two pods touching the SQLite file at once
+  selector:
+    matchLabels:
+      app: compliance-tracker
+  template:
+    metadata:
+      labels:
+        app: compliance-tracker
+    spec:
+      containers:
+        - name: web
+          image: compliance-tracker:1.0
+          imagePullPolicy: Never      # image is imported locally into containerd
+          command: ["python", "serve.py"]
+          ports:
+            - containerPort: 5001
+          envFrom:
+            - secretRef:
+                name: compliance-secrets
+          env:
+            - name: TZ
+              value: "Asia/Dhaka"
+            - name: UPLOAD_FOLDER
+              value: "/data/uploads"
+            - name: BACKUP_FOLDER
+              value: "/data/backups"
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /login
+              port: 5001
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /login
+              port: 5001
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: compliance-data

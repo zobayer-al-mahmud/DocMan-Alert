@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Delete user{% endblock %}
+{% block page_title %}Delete user{% endblock %}
+
+{% block content %}
+<p class="mb-3"><a href="{{ url_for('users.list_users') }}">&larr; Back to Users</a></p>
+<div class="card">
+    <div class="card-body">
+        <h5>Delete {{ user.full_name or user.username }}</h5>
+        <p>This removes the account <strong>{{ user.username }}</strong>. Documents, employee records, and sent alert emails stay in the system. The account is taken off alert recipient lists. This cannot be undone.</p>
+        <form method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label class="form-label" for="confirm_name">Type the username to confirm</label>
+            <input class="form-control mb-3" id="confirm_name" name="confirm_name" autocomplete="off" required>
+            <button class="btn btn-danger" type="submit">Delete user</button>
+            <a href="{{ url_for('users.list_users') }}" class="btn btn-outline-secondary">Cancel</a>
+        </form>
+    </div>
+</div>
+{% endblock %}

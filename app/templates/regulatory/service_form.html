@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block page_title %}{{ title }}{% endblock %}
+
+{% block content %}
+{% from "_macros.html" import field_errors %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body p-4">
+                <form method="POST">
+                    {{ form.hidden_tag() }}
+                    <div class="mb-3">
+                        {{ form.authority_id.label(class="form-label") }}
+                        {{ form.authority_id(class="form-select") }}
+                        {{ field_errors(form.authority_id) }}
+                    </div>
+                    <div class="mb-3">
+                        {{ form.name.label(class="form-label") }}
+                        {{ form.name(class="form-control") }}
+                        {{ field_errors(form.name) }}
+                    </div>
+                    {{ form.submit(class="btn btn-primary") }}
+                    <a href="{{ url_for('regulatory.list_services') }}" class="btn btn-outline-secondary">Cancel</a>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

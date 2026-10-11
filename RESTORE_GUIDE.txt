@@ -1,0 +1,65 @@
+🆘 DocMan Alert — Database/Files Restore Guide
+কখন ব্যবহার করবে
+Database corrupt বা হারিয়ে গেলে
+ভুলবশত অনেক ডেটা delete হয়ে গেলে
+Server crash-এর পর নতুন করে সব সেট করতে হলে
+প্রস্তুতি
+Server-এ RDP/physical access লাগবে (Command Prompt চালানোর জন্য)
+জানতে হবে কোন তারিখের backup restore করতে চাও
+ধাপে ধাপে প্রক্রিয়া
+
+ধাপ ১ — অ্যাপ বন্ধ করো
+যদি python run.py চলমান থাকে, সেই Command Prompt window-এ গিয়ে Ctrl+C চেপে বন্ধ করো। (Restore করার সময় app চলমান থাকলে সমস্যা হতে পারে)
+
+ধাপ ২ — Command Prompt খোলো এবং project folder-এ যাও
+
+cd /d "F:\ICT Projects\Compliance Tracker"
+venv\Scripts\activate
+
+ধাপ ৩ — Restore script চালাও
+
+venv\Scripts\python.exe scripts\restore.py
+
+(নোট: restore script এখন restore শেষে database validate করে এবং
+RESTORE_SUCCESS / RESTORE_FAILURE ঘটনা System Logs-এ লিখে রাখে।
+Backup/mirror path এখন environment variable দিয়ে কনফিগার করা হয়
+— BACKUP_FOLDER / BACKUP_MIRROR_FOLDER।)
+
+ধাপ ৪ — Backup তালিকা দেখবে
+Script স্বয়ংক্রিয়ভাবে backups\ folder-এর সব backup দেখাবে, নতুন থেকে পুরনো ক্রমে (নম্বর সহ):
+
+1. compliance_backup_2026-09-07_18-30-00.zip
+2. compliance_backup_2026-09-06_18-30-00.zip
+...
+
+ধাপ ৫ — সঠিক backup বেছে নাও
+যে তারিখের backup ফিরিয়ে আনতে চাও, সেটার সামনের নম্বর টাইপ করে Enter দাও।
+
+⚠️ যদি mirror drive (E:) থেকে restore করতে হয় (local backup না থাকলে বা নষ্ট হলে): প্রথমে E: drive থেকে ফাইলটা project-এর backups\ folder-এ copy করে আনতে হবে, তারপর script চালাও।
+
+ধাপ ৬ — Confirmation দাও
+Script জিজ্ঞেস করবে সাবধানবাণীসহ। ঠিক backup বেছেছ নিশ্চিত হয়ে টাইপ করো:
+
+YES
+
+(ঠিক এই বানানেই, capital letter-এ)
+
+ধাপ ৭ — Script নিজে থেকেই বাকি কাজ করবে
+
+বর্তমান database/uploads স্বয়ংক্রিয়ভাবে একটা নতুন safety folder-এ (নাম হবে pre_restore_safety_[তারিখ-সময়]) copy করে রাখবে — এটাই তোমার শেষ ভরসা যদি ভুল backup restore হয়ে যায়
+তারপর বেছে নেওয়া backup-এর database ও uploads ফিরিয়ে আনবে
+
+ধাপ ৮ — App আবার চালু করো
+
+python run.py
+
+ধাপ ৯ — Verify করো
+Browser-এ গিয়ে login করে দেখো সব ঠিকভাবে আছে কিনা (Documents, Users, ইত্যাদি)।
+
+ধাপ ১০ — নিশ্চিত হলে safety folder মুছে ফেলো
+সবকিছু ঠিক থাকলে, pre_restore_safety_... নামের folder-টা (project root-এ তৈরি হয়েছিল) মুছে ফেলতে পারো, জায়গা বাঁচানোর জন্য।
+
+⚠️ গুরুত্বপূর্ণ সতর্কতা
+ভুল backup বেছো না — যত পুরনো backup restore করবে, তত বেশি সাম্প্রতিক ডেটা হারাবে (backup-এর পরের সব document/user/log হারিয়ে যাবে)
+Restore করার আগে সম্ভব হলে একবার নতুন backup নাও (venv\Scripts\python.exe scripts\backup.py), যাতে বর্তমান অবস্থাও সংরক্ষিত থাকে
+Restore চলাকালীন কখনো Ctrl+C চেপে থামিও না — মাঝপথে থামালে database অসম্পূর্ণ অবস্থায় থেকে যেতে পারে

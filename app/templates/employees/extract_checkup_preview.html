@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Confirm Extracted Checkup{% endblock %}
+{% block page_title %}Confirm Extracted Checkup{% endblock %}
+
+{% block content %}
+{% from "_macros.html" import field_errors %}
+<p class="text-muted">Employee: <strong>{{ employee.name }}</strong> ({{ employee.employee_code }}).
+Checkup details below are filled from the extracted text. Correct anything that is wrong, then confirm. Nothing is stored until you confirm.</p>
+{% if result.confidence is not none and result.confidence < 60 %}
+<div class="alert alert-warning">OCR confidence is low. Please verify the extracted information.</div>
+{% endif %}
+<div class="card mb-3"><div class="card-body">
+    <p class="mb-1"><strong>Language:</strong> {{ result.language or 'Unknown' }}</p>
+    {% if result.confidence is not none %}<p class="mb-0"><strong>OCR Confidence:</strong> {{ result.confidence }}%</p>{% endif %}
+</div></div>
+
+<form method="POST" class="card mb-3"><div class="card-body">
+    {{ form.hidden_tag() }}
+    <div class="row">
+        <div class="col-md-6 mb-3">
+            {{ form.exam_type.label(class="form-label") }}
+            {{ form.exam_type(class="form-select") }}
+            {{ field_errors(form.exam_type) }}
+        </div>
+        <div class="col-md-6 mb-3">
+            {{ form.test_center.label(class="form-label") }}
+            {{ form.test_center(class="form-control") }}
+            {% if suggestions.test_center %}<div class="form-text">Suggested: {{ suggestions.test_center }}</div>{% endif %}
+        </div>
+        <div class="col-md-4 mb-3">
+            {{ form.report_date.label(class="form-label") }}
+            {{ form.report_date(class="form-control") }}
+            {% if suggestions.report_date %}<div class="form-text">Suggested: {{ suggestions.report_date.value }}{% if suggestions.report_date.ambiguous %} (ambiguous — confirm the format){% endif %}</div>{% elif suggestions.issue_date %}<div class="form-text">Suggested: {{ suggestions.issue_date.value }}{% if suggestions.issue_date.ambiguous %} (ambiguous — confirm the format){% endif %}</div>{% endif %}
+        </div>
+        <div class="col-md-4 mb-3">
+            {{ form.expiry_date.label(class="form-label") }}
+            {{ form.expiry_date(class="form-control", id="expiry_date") }}
+            {% if suggestions.expiry_date %}<div class="form-text">Suggested: {{ suggestions.expiry_date.value }}{% if suggestions.expiry_date.ambiguous %} (ambiguous — confirm the format){% endif %}</div>{% endif %}
+        </div>
+        <div class="col-md-4 mb-3 d-flex align-items-end">
+            <div class="form-check">
+                {{ form.no_expiry(class="form-check-input", id="no_expiry") }}
+                {{ form.no_expiry.label(class="form-check-label") }}
+            </div>
+        </div>
+        <div class="col-md-4 mb-3">
+            {{ form.pre_yn.label(class="form-label") }}
+            {{ form.pre_yn(class="form-select") }}
+        </div>
+        <div class="col-12 mb-3">
+            {{ form.remarks.label(class="form-label") }}
+            {{ form.remarks(class="form-control", rows=2) }}
+        </div>
+        <div class="col-12 mb-3">
+            <label class="form-label">Additional Alert Recipients</label>
+            <p class="form-text mt-0">Optional. Only users in this employee's factory and department are listed.</p>
+            <div class="border rounded p-3" style="max-height:180px; overflow:auto;">
+                {% for user in eligible_recipients %}
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" name="alert_recipients" value="{{ user.id }}" id="xcrecip_{{ user.id }}"
+                        {% if form.alert_recipients.data and user.id in form.alert_recipients.data %}checked{% endif %}>
+                    <label class="form-check-label" for="xcrecip_{{ user.id }}">
+                        <strong>{{ user.full_name or user.username }}</strong> — {{ user.email }}<br>
+                        <span class="text-muted">{{ user.factory.name if user.factory else "No factory" }} · {{ user.department.name if user.department else "No department" }}</span>
+                    </label>
+                </div>
+                {% endfor %}
+                {% for user in ineligible_recipients %}
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" disabled>
+                    <label class="form-check-label text-muted">
+                        {{ user.full_name or user.username }} — {{ user.factory.name if user.factory else "No factory" }} · {{ user.department.name if user.department else "No department" }}. No valid email.
+                    </label>
+                </div>
+                {% endfor %}
+                {% if not eligible_recipients and not ineligible_recipients %}
+                <div class="text-muted">No users belong to this employee's factory and department.</div>
+                {% endif %}
+            </div>
+        </div>
+        <div class="col-12 mb-3">
+            <label class="form-label">Extracted Text</label>
+            <textarea class="form-control" name="extracted_text" rows="8">{{ result.extracted_text or '' }}</textarea>
+        </div>
+    </div>
+    <button class="btn btn-primary" type="submit">Confirm &amp; Save</button>
+    <button class="btn btn-outline-secondary" type="submit" name="action" value="cancel">Cancel</button>
+</div></form>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+    window.addEventListener("DOMContentLoaded", function () {
+        const n = document.getElementById("no_expiry"); const e = document.getElementById("expiry_date");
+        if (!n || !e) return;
+        function s(){ e.disabled = n.checked; if (n.checked) e.value=""; } n.addEventListener("change", s); s();
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Service Categories{% endblock %}
+{% block page_title %}Service Categories{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div></div>
+    <a href="{{ url_for('regulatory.add_category') }}" class="btn btn-accent">+ Add Category</a>
+</div>
+
+<div class="card">
+<table class="table mb-0">
+    <thead>
+        <tr>
+            <th>Category Name</th>
+            <th>Regulatory Authorities</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for category in categories %}
+        <tr>
+            <td>{{ category.name }}</td>
+            <td>{{ category.authorities|length }}</td>
+            <td>
+                <a href="{{ url_for('regulatory.edit_category', category_id=category.id) }}" class="btn btn-sm btn-secondary">Edit</a>
+                <form method="POST" action="{{ url_for('regulatory.delete_category', category_id=category.id) }}" style="display:inline;" onsubmit="return confirm('Are you sure?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                </form>
+            </td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="3" class="text-center text-muted py-4">No categories added yet.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+{% endblock %}

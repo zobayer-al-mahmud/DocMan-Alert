@@ -1,0 +1,22 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: compliance-tracker
+  namespace: compliance
+  annotations:
+    # Serve on both the web (80) and websecure (443) Traefik entrypoints.
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+spec:
+  ingressClassName: traefik
+  rules:
+    # No host = catch-all: reachable at http(s)://192.168.18.69/ and any hostname
+    # (e.g. an internal DNS name like compliance.ananta.com.bd pointed at this IP).
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: compliance-tracker
+                port:
+                  number: 80

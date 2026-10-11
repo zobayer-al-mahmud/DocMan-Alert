@@ -1,0 +1,17 @@
+{% macro field_errors(field) %}
+    {% if field.errors %}
+        {% for error in field.errors %}
+        <div class="text-danger small mt-1">{{ error }}</div>
+        {% endfor %}
+    {% endif %}
+{% endmacro %}
+
+{% macro status_badge(status) %}
+    {% if status == "Valid" %}<span class="badge-status badge-valid">Valid</span>
+    {% elif status == "Expiring in 90 Days" %}<span class="badge-status badge-expiring-90">Expiring in 90 Days</span>
+    {% elif status == "Expiring in 60 Days" %}<span class="badge-status badge-expiring-60">Expiring in 60 Days</span>
+    {% elif status == "Expiring in 30 Days" %}<span class="badge-status badge-expiring-30">Expiring in 30 Days</span>
+    {% elif status == "Expiring in 7 Days" %}<span class="badge-status badge-expiring-7">Expiring in 7 Days</span>
+    {% elif status == "Expired" %}<span class="badge-status badge-expired">Expired</span>
+    {% else %}<span class="badge-status">{{ status }}</span>{% endif %}
+{% endmacro %}

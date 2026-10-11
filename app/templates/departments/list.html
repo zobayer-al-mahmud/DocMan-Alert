@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Departments{% endblock %}
+{% block page_title %}Departments{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div></div>
+    {% if can_edit %}
+    <a href="{{ url_for('admin.add_department') }}" class="btn btn-accent">+ Add Department</a>
+    {% endif %}
+</div>
+
+<div class="card">
+<table class="table mb-0">
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Group Email</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for department in departments %}
+        <tr>
+            <td>{{ department.name }}</td>
+            <td>{{ department.group_email or '-' }}</td>
+            <td>
+                <a href="{{ url_for('admin.factory_department_recipients', department_id=department.id) }}" class="btn btn-sm btn-outline-primary">Alert Recipients</a>
+                {% if can_edit %}
+                <a href="{{ url_for('admin.edit_department', department_id=department.id) }}" class="btn btn-sm btn-secondary">Edit</a>
+                <form method="POST" action="{{ url_for('admin.delete_department', department_id=department.id) }}" style="display:inline;" onsubmit="return confirm('Are you sure?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                </form>
+                {% endif %}
+            </td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="3" class="text-center text-muted py-4">No departments added yet.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+{% endblock %}

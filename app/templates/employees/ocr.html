@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}OCR Result{% endblock %}
+{% block page_title %}OCR Result{% endblock %}
+
+{% block content %}
+<a href="{{ url_for('employees.view_employee', employee_id=employee.id) }}" class="btn btn-outline-secondary btn-sm mb-3">&larr; Back to employee</a>
+<div class="card mb-3"><div class="card-body">
+    <h5>{{ employee.name }}</h5>
+    {% if ocr %}
+        <p><strong>OCR Status:</strong> {{ ocr.ocr_status }}</p>
+        {% if ocr.language %}<p><strong>Language:</strong> {{ ocr.language }}</p>{% endif %}
+        {% if ocr.confidence is not none %}
+        <p><strong>OCR Confidence:</strong> {{ ocr.confidence }}%
+            {% if ocr.confidence < 60 %}<span class="text-warning">OCR confidence is low. Please verify the extracted information.</span>{% endif %}
+        </p>
+        {% endif %}
+        {% if ocr.error_message %}<div class="alert alert-danger">{{ ocr.error_message }}</div>{% endif %}
+    {% else %}
+        <p>OCR has not been run for this file.</p>
+    {% endif %}
+</div></div>
+
+{% if ocr and ocr.ocr_status == 'COMPLETED' %}
+<form method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="card mb-3"><div class="card-body">
+        <p class="text-muted">Suggestions only. Tick Apply to change the saved record. Ambiguous dates are not applied.</p>
+        {% if kind == 'license' %}
+        <div class="mb-3">
+            <label class="form-label">Registration / License Number</label>
+            <input class="form-control" name="registration_number" value="{{ suggestions.license_no or suggestions.registration_number or record.registration_number or '' }}" {% if not can_manage %}readonly{% endif %}>
+            {% if can_manage %}<div class="form-check mt-1"><input class="form-check-input" type="checkbox" name="apply_number" id="apply_number"><label class="form-check-label" for="apply_number">Apply this number</label></div>{% endif %}
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Issue Date</label>
+            <input class="form-control" name="issue_date" value="{{ suggestions.issue_date.value if suggestions.issue_date else (record.issue_date or '') }}" {% if not can_manage %}readonly{% endif %}>
+            {% if can_manage %}<div class="form-check mt-1"><input class="form-check-input" type="checkbox" name="apply_issue_date"><label class="form-check-label">Apply issue date</label></div>{% endif %}
+        </div>
+        {% else %}
+        <div class="mb-3">
+            <label class="form-label">Test Center</label>
+            <input class="form-control" name="test_center" value="{{ suggestions.test_center or record.test_center or '' }}" {% if not can_manage %}readonly{% endif %}>
+            {% if can_manage %}<div class="form-check mt-1"><input class="form-check-input" type="checkbox" name="apply_center"><label class="form-check-label">Apply test center</label></div>{% endif %}
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Report Date</label>
+            <input class="form-control" name="report_date" value="{{ suggestions.report_date.value if suggestions.report_date else (record.report_date or '') }}" {% if not can_manage %}readonly{% endif %}>
+            {% if can_manage %}<div class="form-check mt-1"><input class="form-check-input" type="checkbox" name="apply_report_date"><label class="form-check-label">Apply report date</label></div>{% endif %}
+        </div>
+        {% endif %}
+        <div class="mb-3">
+            <label class="form-label">Expiry Date</label>
+            <input class="form-control" name="expiry_date" value="{{ suggestions.expiry_date.value if suggestions.expiry_date else (record.expiry_date or '') }}" {% if not can_manage %}readonly{% endif %}>
+            {% if suggestions.expiry_date and suggestions.expiry_date.ambiguous %}<div class="text-warning small">Ambiguous date. Enter 05 Jan 2026 before applying.</div>{% endif %}
+            {% if can_manage %}<div class="form-check mt-1"><input class="form-check-input" type="checkbox" name="apply_expiry_date"><label class="form-check-label">Apply expiry date</label></div>{% endif %}
+        </div>
+        <label class="form-label">Extracted Text</label>
+        <textarea class="form-control" name="extracted_text" rows="10" {% if not can_manage %}readonly{% endif %}>{{ ocr.extracted_text or '' }}</textarea>
+    </div></div>
+    {% if can_manage %}
+    <button class="btn btn-primary">Confirm</button>
+    {% endif %}
+</form>
+{% endif %}
+{% if can_manage %}
+<form method="POST" action="{{ url_for('employees.run_license_ocr' if kind == 'license' else 'employees.run_checkup_ocr', record_id=record.id) }}" class="mt-2">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn btn-outline-primary">{{ 'Reprocess OCR' if ocr else 'Run OCR' }}</button>
+</form>
+{% endif %}
+{% endblock %}

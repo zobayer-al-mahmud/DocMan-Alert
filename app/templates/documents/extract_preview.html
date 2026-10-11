@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+{% block title %}Confirm Extracted Data{% endblock %}
+{% block page_title %}Confirm Extracted Data{% endblock %}
+
+{% block content %}
+{% from "_macros.html" import field_errors %}
+<p class="text-muted">Document details below are filled from the extracted text. Correct anything that is wrong, then confirm. Nothing is stored until you confirm.</p>
+{% if result.confidence is not none and result.confidence < 60 %}
+<div class="alert alert-warning">OCR confidence is low. Please verify the extracted information.</div>
+{% endif %}
+<div class="card mb-3"><div class="card-body">
+    <p class="mb-1"><strong>Language:</strong> {{ result.language or 'Unknown' }}</p>
+    {% if result.confidence is not none %}<p class="mb-0"><strong>OCR Confidence:</strong> {{ result.confidence }}%</p>{% endif %}
+</div></div>
+
+<form method="POST" class="card mb-3"><div class="card-body">
+    {{ form.hidden_tag() }}
+    <div class="row">
+        <div class="col-md-6 mb-3">
+            {{ form.factory_id.label(class="form-label") }}
+            {{ form.factory_id(class="form-select") }}
+            {{ field_errors(form.factory_id) }}
+        </div>
+        <div class="col-md-6 mb-3">
+            {{ form.department_id.label(class="form-label") }}
+            {{ form.department_id(class="form-select") }}
+        </div>
+        <div class="col-md-6 mb-3">
+            {{ form.doc_name.label(class="form-label") }}
+            {{ form.doc_name(class="form-control") }}
+            {{ field_errors(form.doc_name) }}
+        </div>
+        <div class="col-md-6 mb-3">
+            {{ form.doc_type.label(class="form-label") }}
+            {{ form.doc_type(class="form-control", list="doc_type_list") }}
+            <datalist id="doc_type_list">{% for s in doc_type_suggestions %}<option value="{{ s }}">{% endfor %}</datalist>
+            {{ field_errors(form.doc_type) }}
+        </div>
+        <div class="col-md-6 mb-3">
+            {{ form.cert_no.label(class="form-label") }}
+            {{ form.cert_no(class="form-control") }}
+            {% if suggestions.cert_no or suggestions.license_no %}<div class="form-text">Suggested: {{ suggestions.cert_no or suggestions.license_no }}</div>{% endif %}
+        </div>
+        <div class="col-md-6 mb-3">
+            {{ form.issuing_authority.label(class="form-label") }}
+            {{ form.issuing_authority(class="form-control") }}
+        </div>
+        <div class="col-md-4 mb-3">
+            {{ form.issue_date.label(class="form-label") }}
+            {{ form.issue_date(class="form-control") }}
+            {% if suggestions.issue_date %}<div class="form-text">Suggested: {{ suggestions.issue_date.value }}{% if suggestions.issue_date.ambiguous %} (ambiguous — confirm the format){% endif %}</div>{% endif %}
+        </div>
+        <div class="col-md-4 mb-3">
+            {{ form.expiry_date.label(class="form-label") }}
+            {{ form.expiry_date(class="form-control") }}
+            {% if suggestions.expiry_date %}<div class="form-text">Suggested: {{ suggestions.expiry_date.value }}{% if suggestions.expiry_date.ambiguous %} (ambiguous — confirm the format){% endif %}</div>{% endif %}
+        </div>
+        <div class="col-md-4 mb-3 d-flex align-items-end">
+            <div class="form-check">{{ form.no_expiry(class="form-check-input") }} {{ form.no_expiry.label(class="form-check-label") }}</div>
+        </div>
+        <div class="col-md-6 mb-3">
+            {{ form.responsible_person.label(class="form-label") }}
+            {{ form.responsible_person(class="form-control") }}
+        </div>
+        <div class="col-md-6 mb-3">
+            {{ form.renewal_status.label(class="form-label") }}
+            {{ form.renewal_status(class="form-select") }}
+        </div>
+        <div class="col-12 mb-3">
+            {{ form.remarks.label(class="form-label") }}
+            {{ form.remarks(class="form-control", rows=2) }}
+        </div>
+        {% if current_user.role.name in ["Super Admin", "Administration"] %}
+        <div class="col-12 mb-3">
+            <p class="text-muted small mb-2">Regulatory reference (optional) — link this document to a specific government office and service, from the list managed under Regulatory Directory.</p>
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    {{ form.category_id.label(class="form-label") }}
+                    {{ form.category_id(class="form-select", id="category_id") }}
+                </div>
+                <div class="col-md-4 mb-3">
+                    {{ form.authority_id.label(class="form-label") }}
+                    {{ form.authority_id(class="form-select", id="authority_id") }}
+                </div>
+                <div class="col-md-4 mb-3">
+                    {{ form.service_id.label(class="form-label") }}
+                    {{ form.service_id(class="form-select", id="service_id") }}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        <div class="col-12 mb-3">
+            <label class="form-label">Extracted Text</label>
+            <textarea class="form-control" name="extracted_text" rows="8">{{ result.extracted_text or '' }}</textarea>
+        </div>
+    </div>
+    <button class="btn btn-primary" type="submit">Confirm &amp; Save</button>
+    <button class="btn btn-outline-secondary" type="submit" name="action" value="cancel">Cancel</button>
+</div></form>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+    const categorySelect = document.getElementById("category_id");
+    const authoritySelect = document.getElementById("authority_id");
+    const serviceSelect = document.getElementById("service_id");
+    if (categorySelect && authoritySelect && serviceSelect) {
+        function loadAuthorities(categoryId, selectedId, thenLoadServiceId) {
+            fetch("/regulatory/api/authorities/" + categoryId)
+                .then(response => response.json())
+                .then(data => {
+                    authoritySelect.innerHTML = "";
+                    const noneOption = document.createElement("option");
+                    noneOption.value = "0"; noneOption.text = "-- None --";
+                    authoritySelect.appendChild(noneOption);
+                    data.forEach(authority => {
+                        const option = document.createElement("option");
+                        option.value = authority.id; option.text = authority.name;
+                        if (String(authority.id) === String(selectedId)) option.selected = true;
+                        authoritySelect.appendChild(option);
+                    });
+                    loadServices(authoritySelect.value, thenLoadServiceId || "0");
+                });
+        }
+        function loadServices(authorityId, selectedId) {
+            fetch("/regulatory/api/services/" + authorityId)
+                .then(response => response.json())
+                .then(data => {
+                    serviceSelect.innerHTML = "";
+                    const noneOption = document.createElement("option");
+                    noneOption.value = "0"; noneOption.text = "-- None --";
+                    serviceSelect.appendChild(noneOption);
+                    data.forEach(service => {
+                        const option = document.createElement("option");
+                        option.value = service.id; option.text = service.name;
+                        if (String(service.id) === String(selectedId)) option.selected = true;
+                        serviceSelect.appendChild(option);
+                    });
+                });
+        }
+        categorySelect.addEventListener("change", function () { loadAuthorities(this.value, "0", "0"); });
+        authoritySelect.addEventListener("change", function () { loadServices(this.value, "0"); });
+    }
+
+    const factorySelect = document.getElementById("factory_id");
+    const departmentSelect = document.getElementById("department_id");
+    const currentDepartmentId = "{{ form.department_id.data or 0 }}";
+    if (factorySelect && departmentSelect) {
+        function loadDepartments(factoryId, selectedId) {
+            fetch("/documents/api/departments/" + factoryId)
+                .then(response => response.json())
+                .then(data => {
+                    departmentSelect.innerHTML = "";
+                    const none = document.createElement("option");
+                    none.value = "0";
+                    none.text = "-- None --";
+                    departmentSelect.appendChild(none);
+                    data.forEach(dept => {
+                        const option = document.createElement("option");
+                        option.value = dept.id;
+                        option.text = dept.name;
+                        if (String(dept.id) === String(selectedId)) option.selected = true;
+                        departmentSelect.appendChild(option);
+                    });
+                });
+        }
+        window.addEventListener("DOMContentLoaded", function () {
+            loadDepartments(factorySelect.value, currentDepartmentId);
+        });
+    }
+</script>
+{% endblock %}

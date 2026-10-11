@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Services{% endblock %}
+{% block page_title %}Services{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div></div>
+    <a href="{{ url_for('regulatory.add_service') }}" class="btn btn-accent">+ Add Service</a>
+</div>
+
+<div class="card">
+<table class="table mb-0">
+    <thead>
+        <tr>
+            <th>Service Name</th>
+            <th>Regulatory Authority</th>
+            <th>Category</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for service in services %}
+        <tr>
+            <td>{{ service.name }}</td>
+            <td>{{ service.authority.name }}</td>
+            <td>{{ service.authority.category.name }}</td>
+            <td>
+                <a href="{{ url_for('regulatory.edit_service', service_id=service.id) }}" class="btn btn-sm btn-secondary">Edit</a>
+                <form method="POST" action="{{ url_for('regulatory.delete_service', service_id=service.id) }}" style="display:inline;" onsubmit="return confirm('Are you sure?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                </form>
+            </td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="4" class="text-center text-muted py-4">No services added yet.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+{% endblock %}

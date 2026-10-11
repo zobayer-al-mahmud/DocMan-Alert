@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Department Alert Recipients{% endblock %}
+{% block page_title %}Factory-Specific Department Alert Recipients{% endblock %}
+
+{% block content %}
+<a href="{{ url_for('admin.list_departments') }}" class="btn btn-outline-secondary btn-sm mb-3">&larr; Back to Departments</a>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <p class="text-muted mb-3">
+            Choose a <strong>Factory</strong> and a <strong>Department</strong>, then assign the users who should
+            receive alerts for that combination. Only users who belong to the selected factory and department are
+            listed — people from other factories or departments never appear here. The department group mailbox
+            (set on the department) is always included in addition to these recipients.
+        </p>
+        <form method="GET" class="row g-2 align-items-end">
+            <div class="col-md-5">
+                <label class="form-label mb-1">Factory</label>
+                <select name="factory_id" class="form-select" onchange="this.form.submit()">
+                    <option value="0">— Select factory —</option>
+                    {% for f in factories %}
+                    <option value="{{ f.id }}" {% if f.id == factory_id %}selected{% endif %}>{{ f.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-5">
+                <label class="form-label mb-1">Department</label>
+                <select name="department_id" class="form-select" onchange="this.form.submit()">
+                    <option value="0">— Select department —</option>
+                    {% for d in departments %}
+                    <option value="{{ d.id }}" {% if d.id == department_id %}selected{% endif %}>{{ d.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-outline-primary w-100">Show</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if factory and department %}
+<div class="card">
+    <div class="card-body">
+        <h5 class="mb-1">{{ factory.name }} · {{ department.name }}</h5>
+        {% if group_emails %}
+        <p class="text-muted mb-2">Group mailbox (always emailed): <strong>{{ group_emails|join(', ') }}</strong></p>
+        {% else %}
+        <p class="text-muted mb-2">No department group mailbox is set for {{ department.name }}.</p>
+        {% endif %}
+
+        <form method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="factory_id" value="{{ factory_id }}">
+            <input type="hidden" name="department_id" value="{{ department_id }}">
+            <div class="border rounded p-3 mb-3" style="max-height:420px; overflow:auto;">
+                {% for user in eligible %}
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" name="user_id" value="{{ user.id }}" id="user_{{ user.id }}"
+                        {% if user.id in selected_ids %}checked{% endif %}>
+                    <label class="form-check-label" for="user_{{ user.id }}">
+                        <strong>{{ user.full_name or user.username }}</strong> — {{ user.email }}<br>
+                        <span class="text-muted">{{ factory.name }} · {{ department.name }}</span>
+                    </label>
+                </div>
+                {% endfor %}
+                {% for user in ineligible %}
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" disabled>
+                    <label class="form-check-label text-muted">
+                        {{ user.full_name or user.username }} — no valid email. Add an email on the user's account to enable alerts.
+                    </label>
+                </div>
+                {% endfor %}
+                {% if not eligible and not ineligible %}
+                <div class="text-muted">No users belong to {{ factory.name }} · {{ department.name }} yet.</div>
+                {% endif %}
+            </div>
+            <button type="submit" class="btn btn-primary">Save recipients</button>
+        </form>
+
+        {% if global_receivers %}
+        <hr>
+        <p class="text-muted mb-1"><strong>Also notified (all factories):</strong></p>
+        <ul class="text-muted small mb-0">
+            {% for u in global_receivers %}
+            <li>{{ u.full_name or u.username }} — {{ u.email or 'no email' }} (global {{ u.role.name }})</li>
+            {% endfor %}
+        </ul>
+        <p class="text-muted small mt-1 mb-0">These are global-access users in {{ department.name }}; manage them from their user account, not here.</p>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+{% endblock %}

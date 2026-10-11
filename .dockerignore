@@ -1,0 +1,14 @@
+venv/
+.git/
+__pycache__/
+**/__pycache__/
+*.pyc
+backups/*.zip
+backups/*.db
+_server_pre_wipe_backup/
+docs/
+tests/
+QA_TEST_REPORT.md
+*.md
+.env
+.claude/

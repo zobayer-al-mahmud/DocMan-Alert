@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block page_title %}{{ title }}{% endblock %}
+
+{% block content %}
+{% from "_macros.html" import field_errors %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-body p-4">
+                <p class="text-muted">Renewing <strong>{{ document.doc_name }}</strong> ({{ document.factory.name }}).
+                   The new file is stored and the earlier files are kept.</p>
+                <form method="POST" enctype="multipart/form-data">
+                    {{ form.hidden_tag() }}
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            {{ form.issue_date.label(class="form-label") }}
+                            {{ form.issue_date(class="form-control") }}
+                            {{ field_errors(form.issue_date) }}
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            {{ form.expiry_date.label(class="form-label") }}
+                            {{ form.expiry_date(class="form-control", id="expiry_date") }}
+                            {{ field_errors(form.expiry_date) }}
+                        </div>
+                        <div class="col-md-4 mb-3 d-flex align-items-end">
+                            <div class="form-check">
+                                {{ form.no_expiry(class="form-check-input", id="no_expiry") }}
+                                {{ form.no_expiry.label(class="form-check-label") }}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        {{ form.cert_no.label(class="form-label") }}
+                        {{ form.cert_no(class="form-control") }}
+                        {{ field_errors(form.cert_no) }}
+                    </div>
+                    <div class="mb-3">
+                        {{ form.remarks.label(class="form-label") }}
+                        {{ form.remarks(class="form-control", rows=2) }}
+                    </div>
+                    <div class="mb-3">
+                        {{ form.file.label(class="form-label") }}
+                        {{ form.file(class="form-control") }}
+                        <div class="form-text">Allowed: PDF, JPG, PNG, DOCX, XLSX (max 10 MB).</div>
+                        {{ field_errors(form.file) }}
+                    </div>
+                    {{ form.submit(class="btn btn-primary") }}
+                    <a href="{{ url_for('documents.list_documents') }}" class="btn btn-outline-secondary">Cancel</a>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+    window.addEventListener("DOMContentLoaded", function () {
+        const noExpiry = document.getElementById("no_expiry");
+        const expiry = document.getElementById("expiry_date");
+        function sync() { expiry.disabled = noExpiry.checked; if (noExpiry.checked) expiry.value = ""; }
+        noExpiry.addEventListener("change", sync); sync();
+    });
+</script>
+{% endblock %}

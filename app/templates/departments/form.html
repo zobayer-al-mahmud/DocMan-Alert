@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block page_title %}{{ title }}{% endblock %}
+
+{% block content %}
+{% from "_macros.html" import field_errors %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body p-4">
+                <form method="POST">
+                    {{ form.hidden_tag() }}
+                    <div class="mb-3">
+                        {{ form.name.label(class="form-label") }}
+                        {{ form.name(class="form-control") }}
+                        {{ field_errors(form.name) }}
+                    </div>
+                    <div class="mb-3">
+                        {{ form.group_email.label(class="form-label") }}
+                        {{ form.group_email(class="form-control", placeholder="name@ananta.com.bd") }}
+                        {{ field_errors(form.group_email) }}
+                        <small class="text-muted">Optional mailbox for this department at every factory.</small>
+                    </div>
+                    {{ form.submit(class="btn btn-primary") }}
+                    <a href="{{ url_for('admin.list_departments') }}" class="btn btn-outline-secondary">Cancel</a>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

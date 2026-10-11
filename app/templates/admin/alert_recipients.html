@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block page_title %}{{ heading }}{% endblock %}
+
+{% block content %}
+<a href="{{ back_url }}" class="btn btn-outline-secondary btn-sm mb-3">&larr; Back</a>
+
+<div class="card">
+    <div class="card-body">
+        <h5 class="mb-1">{{ scope_label }}</h5>
+        <p class="text-muted">{{ help_text }} Email addresses come from each user's account. Inactive users stay assigned but are not emailed until they are active again.</p>
+        <form method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="border rounded p-3 mb-3" style="max-height:420px; overflow:auto;">
+                {% for user in eligible %}
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" name="user_id" value="{{ user.id }}" id="user_{{ user.id }}"
+                        {% if user.id in selected_ids %}checked{% endif %}>
+                    <label class="form-check-label" for="user_{{ user.id }}">
+                        <strong>{{ user.full_name or user.username }}</strong> — {{ user.email }}<br>
+                        <span class="text-muted">{{ user.factory.name if user.factory else "No factory" }} · {{ user.department.name if user.department else "No department" }}</span>
+                    </label>
+                </div>
+                {% endfor %}
+                {% for user in ineligible %}
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" disabled>
+                    <label class="form-check-label text-muted">
+                        {{ user.full_name or user.username }} — {{ user.factory.name if user.factory else "No factory" }} · {{ user.department.name if user.department else "No department" }}. No valid email.
+                    </label>
+                </div>
+                {% endfor %}
+                {% if not eligible and not ineligible %}
+                <div class="text-muted">No users are in scope for this assignment.</div>
+                {% endif %}
+            </div>
+            <button type="submit" class="btn btn-primary">Save</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

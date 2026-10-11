@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block page_title %}{{ title }}{% endblock %}
+
+{% block content %}
+{% from "_macros.html" import field_errors %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card"><div class="card-body p-4">
+            <form method="POST">
+                {{ form.hidden_tag() }}
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        {{ form.employee_code.label(class="form-label") }}
+                        {{ form.employee_code(class="form-control") }}
+                        {{ field_errors(form.employee_code) }}
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        {{ form.name.label(class="form-label") }}
+                        {{ form.name(class="form-control") }}
+                        {{ field_errors(form.name) }}
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        {{ form.designation.label(class="form-label") }}
+                        {{ form.designation(class="form-control") }}
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        {{ form.section.label(class="form-label") }}
+                        {{ form.section(class="form-control") }}
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        {{ form.factory_id.label(class="form-label") }}
+                        {{ form.factory_id(class="form-select") }}
+                        {{ field_errors(form.factory_id) }}
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        {{ form.department_id.label(class="form-label") }}
+                        {{ form.department_id(class="form-select") }}
+                        <div class="form-text">Used to choose department alert recipients for this employee's licenses and checkups.</div>
+                        {{ field_errors(form.department_id) }}
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        {{ form.email.label(class="form-label") }}
+                        {{ form.email(class="form-control") }}
+                        {{ field_errors(form.email) }}
+                    </div>
+                    <div class="col-md-6 mb-3 d-flex align-items-end">
+                        <div class="form-check">
+                            {{ form.receive_alerts(class="form-check-input") }}
+                            {{ form.receive_alerts.label(class="form-check-label") }}
+                        </div>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        {{ form.date_of_joining.label(class="form-label") }}
+                        {{ form.date_of_joining(class="form-control") }}
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        {{ form.is_active.label(class="form-label") }}
+                        {{ form.is_active(class="form-select") }}
+                    </div>
+                </div>
+                {{ form.submit(class="btn btn-primary") }}
+                <a href="{{ url_for('employees.list_employees') }}" class="btn btn-outline-secondary">Cancel</a>
+            </form>
+        </div></div>
+    </div>
+</div>
+{% endblock %}

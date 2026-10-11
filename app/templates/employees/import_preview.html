@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Import Preview{% endblock %}
+{% block page_title %}Import Preview - {{ import_type_label }}{% endblock %}
+
+{% block content %}
+<a href="{{ url_for('employees.import_data') }}" class="btn btn-outline-secondary btn-sm mb-3">&larr; Start Over</a>
+
+<div class="row g-3 mb-3">
+    <div class="col"><div class="stat-card"><div class="stat-label">Total Rows</div><div class="stat-value">{{ counts.total }}</div></div></div>
+    <div class="col"><div class="stat-card stat-success"><div class="stat-label">Valid</div><div class="stat-value">{{ counts.valid }}</div></div></div>
+    <div class="col"><div class="stat-card stat-warning"><div class="stat-label">Warning</div><div class="stat-value">{{ counts.warning }}</div></div></div>
+    <div class="col"><div class="stat-card stat-danger"><div class="stat-label">Failed</div><div class="stat-value">{{ counts.failed }}</div></div></div>
+</div>
+
+{% if errors %}
+<div class="alert alert-danger">
+    <strong>{{ errors|length }} failed row(s).</strong> These will not be imported.
+    <ul class="mb-0 mt-2">
+        {% for e in errors[:50] %}<li>{{ e }}</li>{% endfor %}
+        {% if errors|length > 50 %}<li>... and {{ errors|length - 50 }} more.</li>{% endif %}
+    </ul>
+</div>
+{% endif %}
+
+{% if warnings %}
+<div class="alert alert-warning">
+    <strong>{{ warnings|length }} warning(s).</strong> Existing relationships and duplicate rows are skipped.
+    <ul class="mb-0 mt-2">
+        {% for w in warnings[:50] %}<li>{{ w }}</li>{% endfor %}
+        {% if warnings|length > 50 %}<li>... and {{ warnings|length - 50 }} more.</li>{% endif %}
+    </ul>
+</div>
+{% endif %}
+
+<div class="card mb-3"><div class="card-body">
+    <strong>{{ parsed|length }}</strong> record(s) ready to import.
+    Showing first {{ preview_rows|length }}.
+</div></div>
+
+<div class="card mb-3">
+<table class="table mb-0">
+    <thead><tr><th>Kind</th><th>Reference</th><th>Details</th></tr></thead>
+    <tbody>
+        {% for row in preview_rows %}
+        <tr>
+            <td>{{ row.kind }}</td>
+            <td>
+                {% if row.kind == "recipient" %}
+                    {{ row.user_label }} — {{ row.email }}
+                {% elif row.employee is defined %}
+                    {{ row.employee.employee_code }} — {{ row.employee.name }}
+                {% else %}
+                    -
+                {% endif %}
+            </td>
+            <td>
+                {% if row.kind == "license" %}
+                    {{ row.compliance_type }} — {{ row.registration_number or 'no reg.' }}
+                    ({% if row.no_expiry %}no expiry{% else %}exp {{ row.expiry_date or '-' }}{% endif %})
+                {% elif row.kind == "health" %}
+                    {{ row.exams|length }} exam(s): {% for ex in row.exams %}{{ ex.exam_type }}{% if not loop.last %}, {% endif %}{% endfor %}
+                {% elif row.kind == "recipient" %}
+                    {{ row.scope }}{% if row.department_name %} / {{ row.department_name }}{% endif %} / {{ row.company_name }}
+                    {% if row.notes %}<div class="text-muted small">{{ row.notes|join(' ') }}</div>{% endif %}
+                {% elif row.kind == "employee" %}
+                    Factory {{ row.employee.factory_id }}{% if row.employee.department_id %} · department linked{% endif %}
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+
+{% if parsed %}
+<form method="POST" action="{{ url_for('employees.import_confirm') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="import_type" value="{{ import_type }}">
+    <input type="hidden" name="token" value="{{ token }}">
+    <button type="submit" class="btn btn-primary" onclick="return confirm('Import the valid rows now?');">Confirm Import</button>
+    <a href="{{ url_for('employees.import_data') }}" class="btn btn-outline-secondary">Cancel</a>
+</form>
+{% else %}
+<div class="alert alert-info">No new rows are ready to import.</div>
+{% endif %}
+{% endblock %}
