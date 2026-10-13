@@ -4,13 +4,6 @@
 
 {% block content %}
 
-{% if expired_count > 0 or expiring_count > 0 %}
-<div class="alert alert-warning">
-    {% if expired_count > 0 %}<strong>{{ expired_count }}</strong> document(s) have already expired. {% endif %}
-    {% if expiring_count > 0 %}<strong>{{ expiring_count }}</strong> document(s) are expiring within 90 days.{% endif %}
-</div>
-{% endif %}
-
 <h5 class="section-heading mb-2">Factory Documents</h5>
 <div class="row g-3 mb-4">
     <div class="col-6 col-lg">
