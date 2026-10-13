@@ -22,21 +22,32 @@ def _sees_all_factories():
     return current_user.can_access_all_factories()
 
 
+def _sees_all_alerts():
+    """Only Super Admin may see alerts sent to other users."""
+    return current_user.role.name == "Super Admin"
+
+
+def _personal_recipient_filter():
+    """Match alert emails addressed to the signed-in user."""
+    conditions = [AlertEmail.user_id == current_user.id]
+    if current_user.email:
+        conditions.append(AlertEmail.recipient_email == current_user.email)
+    return or_(*conditions)
+
+
 def _history_query():
     query = AlertEmail.query.options(selectinload(AlertEmail.items))
-    if current_user.role.name != "Super Admin":
+    if not _sees_all_alerts():
         query = query.filter(AlertEmail.alert_type != "test")
-    if _sees_all_factories():
+        query = query.filter(_personal_recipient_filter())
         return query
-    if not current_user.factory_id:
-        return query.filter(AlertEmail.id.is_(None))
-    return query.filter(
-        AlertEmail.items.any(AlertEmailItem.factory_id == current_user.factory_id)
-    )
+    return query
 
 
 def _visible_items(email):
     items = list(email.items or [])
+    if _sees_all_alerts():
+        return items
     if _sees_all_factories():
         return items
     factory_id = current_user.factory_id
