@@ -14,7 +14,7 @@ from app.models import (
 from app.utils import (
     recalculate_all_statuses, EXPIRING_STATUSES, ATTENTION_STATUSES,
     CRITICAL_STATUSES, STATUS_VALID, STATUS_EXPIRED, format_sources, sources_for_user,
-    RecipientIndex,
+    RecipientIndex, roles_required,
 )
 
 main_bp = Blueprint("main", __name__)
@@ -165,6 +165,7 @@ def _apply_factory_column(query, column):
 
 @main_bp.route("/my-alerts")
 @login_required
+@roles_required("Super Admin", "Administration")
 def my_alerts():
     """Read-only list of records that can email the signed-in user."""
     show_all = request.args.get("show") == "all"

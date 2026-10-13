@@ -12,7 +12,7 @@ regulatory_bp = Blueprint("regulatory", __name__, url_prefix="/regulatory")
 
 @regulatory_bp.route("/categories")
 @login_required
-@roles_required("Super Admin")
+@roles_required("Super Admin", "Administration")
 def list_categories():
     categories = ServiceCategory.query.order_by(ServiceCategory.name).all()
     return render_template("regulatory/categories_list.html", categories=categories)
@@ -20,7 +20,7 @@ def list_categories():
 
 @regulatory_bp.route("/categories/add", methods=["GET", "POST"])
 @login_required
-@roles_required("Super Admin")
+@roles_required("Super Admin", "Administration")
 def add_category():
     form = ServiceCategoryForm()
 
@@ -43,7 +43,7 @@ def add_category():
 
 @regulatory_bp.route("/categories/edit/<int:category_id>", methods=["GET", "POST"])
 @login_required
-@roles_required("Super Admin")
+@roles_required("Super Admin", "Administration")
 def edit_category(category_id):
     category = ServiceCategory.query.get_or_404(category_id)
     form = ServiceCategoryForm(obj=category)
@@ -67,7 +67,7 @@ def edit_category(category_id):
 
 @regulatory_bp.route("/categories/delete/<int:category_id>", methods=["POST"])
 @login_required
-@roles_required("Super Admin")
+@roles_required("Super Admin", "Administration")
 def delete_category(category_id):
     category = ServiceCategory.query.get_or_404(category_id)
 
@@ -85,7 +85,7 @@ def delete_category(category_id):
 
 @regulatory_bp.route("/authorities")
 @login_required
-@roles_required("Super Admin")
+@roles_required("Super Admin", "Administration")
 def list_authorities():
     authorities = RegulatoryAuthority.query.join(ServiceCategory).order_by(
         ServiceCategory.name, RegulatoryAuthority.name
@@ -95,7 +95,7 @@ def list_authorities():
 
 @regulatory_bp.route("/authorities/add", methods=["GET", "POST"])
 @login_required
-@roles_required("Super Admin")
+@roles_required("Super Admin", "Administration")
 def add_authority():
     form = RegulatoryAuthorityForm()
     form.category_id.choices = [(c.id, c.name) for c in ServiceCategory.query.order_by(ServiceCategory.name).all()]
@@ -120,7 +120,7 @@ def add_authority():
 
 @regulatory_bp.route("/authorities/edit/<int:authority_id>", methods=["GET", "POST"])
 @login_required
-@roles_required("Super Admin")
+@roles_required("Super Admin", "Administration")
 def edit_authority(authority_id):
     authority = RegulatoryAuthority.query.get_or_404(authority_id)
     form = RegulatoryAuthorityForm(obj=authority)
@@ -147,7 +147,7 @@ def edit_authority(authority_id):
 
 @regulatory_bp.route("/authorities/delete/<int:authority_id>", methods=["POST"])
 @login_required
-@roles_required("Super Admin")
+@roles_required("Super Admin", "Administration")
 def delete_authority(authority_id):
     authority = RegulatoryAuthority.query.get_or_404(authority_id)
 
@@ -165,7 +165,7 @@ def delete_authority(authority_id):
 
 @regulatory_bp.route("/services")
 @login_required
-@roles_required("Super Admin")
+@roles_required("Super Admin", "Administration")
 def list_services():
     services = Service.query.join(RegulatoryAuthority).join(ServiceCategory).order_by(
         ServiceCategory.name, RegulatoryAuthority.name, Service.name
@@ -175,7 +175,7 @@ def list_services():
 
 @regulatory_bp.route("/services/add", methods=["GET", "POST"])
 @login_required
-@roles_required("Super Admin")
+@roles_required("Super Admin", "Administration")
 def add_service():
     form = ServiceForm()
     form.authority_id.choices = [
@@ -203,7 +203,7 @@ def add_service():
 
 @regulatory_bp.route("/services/edit/<int:service_id>", methods=["GET", "POST"])
 @login_required
-@roles_required("Super Admin")
+@roles_required("Super Admin", "Administration")
 def edit_service(service_id):
     service = Service.query.get_or_404(service_id)
     form = ServiceForm(obj=service)
@@ -233,7 +233,7 @@ def edit_service(service_id):
 
 @regulatory_bp.route("/services/delete/<int:service_id>", methods=["POST"])
 @login_required
-@roles_required("Super Admin")
+@roles_required("Super Admin", "Administration")
 def delete_service(service_id):
     from app.models import Document
     service = Service.query.get_or_404(service_id)
