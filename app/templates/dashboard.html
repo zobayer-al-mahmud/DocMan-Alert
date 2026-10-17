@@ -29,6 +29,7 @@
     </div>
 </div>
 
+{% if current_user.role.name not in ["Administration", "Transport Manager", "Transport User"] %}
 <h5 class="section-heading mb-2">Employee Compliance</h5>
 <div class="row g-3 mb-4">
     <div class="col-6 col-lg">
@@ -47,6 +48,7 @@
         <div class="stat-card stat-danger"><div class="stat-label">Checkups Expired</div><div class="stat-value">{{ checkup_expired }}</div></div>
     </div>
 </div>
+{% endif %}
 
 <div class="row g-3">
     <div class="col-lg-7">

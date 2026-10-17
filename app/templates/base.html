@@ -43,7 +43,7 @@
                 <a href="{{ url_for('users.list_users') }}" class="nav-link {% if active_page == 'users' %}active{% endif %}">Users</a>
                 {% endif %}
 
-                {% if current_user.is_authenticated and current_user.role.name in ["Super Admin", "Administration"] %}
+                {% if current_user.is_authenticated and current_user.role.name == "Super Admin" %}
                 <div class="sidebar-section-label">Regulatory Directory</div>
                 <a href="{{ url_for('regulatory.list_categories') }}" class="nav-link {% if active_page == 'reg_categories' %}active{% endif %}">Categories</a>
                 <a href="{{ url_for('regulatory.list_authorities') }}" class="nav-link {% if active_page == 'reg_authorities' %}active{% endif %}">Regulatory Authorities</a>

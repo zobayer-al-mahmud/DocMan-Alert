@@ -15,6 +15,7 @@ TESTS = [
     "test_status_engine.py",
     "test_routes_smoke.py",
     "test_isolation_rbac.py",
+    "test_regulatory_rbac.py",
     "test_excel_import.py",
     "test_alert_recipients.py",
     "test_alert_scope.py",
