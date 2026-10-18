@@ -12,7 +12,7 @@ admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 
 
 def can_access_factory_for_dept(factory_id):
-    if current_user.role.name in ["Super Admin", "Compliance Viewer", "Administration"]:
+    if current_user.can_access_all_factories():
         return True
     return current_user.factory_id == factory_id
 

@@ -121,7 +121,12 @@ class User(UserMixin, db.Model):
     department = db.relationship("Department", foreign_keys=[department_id])
 
     def can_access_all_factories(self):
-        return self.role.name in ["Super Admin", "Compliance Viewer", "Administration"]
+        if self.role.name in ["Super Admin", "Compliance Viewer", "Administration"]:
+            return True
+        # Global Access: a user without an assigned factory acts across every
+        # factory. This matches the recipient-resolution convention in
+        # app/utils.py:user_matches_factory_department.
+        return self.factory_id is None
 
     def __repr__(self):
         return f"<User {self.username}>"
