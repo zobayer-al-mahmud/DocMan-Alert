@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Renew {{ doc_type_label }}{% endblock %}
+{% block page_title %}Renew · {{ doc_type_label }} · {{ vehicle.registration_no }}{% endblock %}
+
+{% block content %}
+<a href="{{ url_for('vehicles.view_vehicle', vehicle_id=vehicle.id) }}" class="btn btn-outline-secondary btn-sm mb-3">&larr; Vehicle</a>
+
+<div class="row justify-content-center">
+    <div class="col-lg-7">
+        <div class="card"><div class="card-body p-4">
+            <p class="text-muted">Current expiry: <strong>{{ doc.expiry_date or '—' }}</strong>. This creates a new file version and updates the active expiry.</p>
+            <form method="POST" enctype="multipart/form-data" novalidate>
+                {{ form.csrf_token }}
+                <div class="mb-3">
+                    <label class="form-label">{{ form.doc_number.label.text }}</label>
+                    {{ form.doc_number(class_="form-control") }}
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">{{ form.issue_date.label.text }}</label>
+                        {{ form.issue_date(class_="form-control") }}
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">{{ form.expiry_date.label.text }}</label>
+                        {{ form.expiry_date(class_="form-control") }}
+                    </div>
+                </div>
+                <div class="form-check mb-3">
+                    {{ form.no_expiry(class_="form-check-input") }}
+                    <label class="form-check-label">{{ form.no_expiry.label.text }}</label>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">{{ form.note.label.text }}</label>
+                    {{ form.note(class_="form-control") }}
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">{{ form.file.label.text }}</label>
+                    {{ form.file(class_="form-control") }}
+                </div>
+                <button type="submit" class="btn btn-primary">Create new version</button>
+                <a href="{{ url_for('vehicles.view_vehicle', vehicle_id=vehicle.id) }}" class="btn btn-outline-secondary">Cancel</a>
+            </form>
+        </div></div>
+    </div>
+</div>
+{% endblock %}

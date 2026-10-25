@@ -78,6 +78,44 @@ class DocumentRenewForm(FlaskForm):
     submit = SubmitField("Create New Version")
 
 
+# --- Vehicles ---------------------------------------------------------------
+
+class VehicleForm(FlaskForm):
+    registration_no = StringField("Registration No.", validators=[DataRequired(), Length(max=80)])
+    vehicle_type = StringField("Vehicle Type", validators=[Optional(), Length(max=150)])
+    factory_id = SelectField("Owning Factory", coerce=_blank_int, validators=[Optional()], default=0)
+    office_label = StringField("Office Label", validators=[Optional(), Length(max=100)])
+    owner_name_raw = StringField("Owner Name (as recorded)", validators=[Optional(), Length(max=200)])
+    submit = SubmitField("Save")
+
+
+class VehicleDocumentForm(FlaskForm):
+    """Edit one vehicle document (Tax Token / Fitness / Route Permit / Blue Book)."""
+    doc_number = StringField("Document Number", validators=[Optional(), Length(max=100)])
+    issue_date = DateField("Issue Date", validators=[Optional()])
+    expiry_date = DateField("Expiry Date", validators=[Optional()])
+    no_expiry = BooleanField("No expiry date (status note only)")
+    note = TextAreaField("Note", validators=[Optional(), Length(max=1000)])
+    renewal_status = SelectField("Renewal Status", choices=[
+        ("Not Started", "Not Started"),
+        ("In Progress", "In Progress"),
+        ("Completed", "Completed"),
+    ])
+    file = FileField("Upload File", validators=[FileAllowed(UPLOAD_EXTENSIONS, UPLOAD_MESSAGE)])
+    submit = SubmitField("Save")
+
+
+class VehicleDocumentRenewForm(FlaskForm):
+    """Create a new version for a vehicle document (file + updated dates)."""
+    issue_date = DateField("New Issue Date", validators=[Optional()])
+    expiry_date = DateField("New Expiry Date", validators=[Optional()])
+    no_expiry = BooleanField("No expiry date")
+    doc_number = StringField("New Document Number", validators=[Optional(), Length(max=100)])
+    note = StringField("Note", validators=[Optional(), Length(max=300)])
+    file = FileField("New File", validators=[FileAllowed(UPLOAD_EXTENSIONS, UPLOAD_MESSAGE)])
+    submit = SubmitField("Create New Version")
+
+
 class ServiceCategoryForm(FlaskForm):
     name = StringField("Category Name", validators=[DataRequired(), Length(max=150)])
     submit = SubmitField("Save")

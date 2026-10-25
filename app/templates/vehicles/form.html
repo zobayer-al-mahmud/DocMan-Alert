@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block page_title %}{{ title }}{% endblock %}
+
+{% block content %}
+<a href="{{ url_for('vehicles.list_vehicles') }}" class="btn btn-outline-secondary btn-sm mb-3">&larr; Vehicles</a>
+
+<div class="row justify-content-center">
+    <div class="col-lg-7">
+        <div class="card"><div class="card-body p-4">
+            <form method="POST" novalidate>
+                {{ form.csrf_token }}
+                <div class="mb-3">
+                    <label class="form-label">{{ form.registration_no.label.text }}</label>
+                    {{ form.registration_no(class_="form-control") }}
+                    <div class="form-text">Example: DM GA 21-1744 (dashes, dots and spaces are ignored for the natural key).</div>
+                    {% for e in form.registration_no.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">{{ form.vehicle_type.label.text }}</label>
+                    {{ form.vehicle_type(class_="form-control") }}
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">{{ form.factory_id.label.text }}</label>
+                    {{ form.factory_id(class_="form-select") }}
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">{{ form.office_label.label.text }}</label>
+                    {{ form.office_label(class_="form-control") }}
+                    <div class="form-text">Free-text (AGL, HO, PWPL, Personal, etc.).</div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">{{ form.owner_name_raw.label.text }}</label>
+                    {{ form.owner_name_raw(class_="form-control") }}
+                    <div class="form-text">Preserve the exact owner name from the source document (useful for personal owners).</div>
+                </div>
+                <button type="submit" class="btn btn-primary">Save</button>
+                <a href="{{ url_for('vehicles.list_vehicles') }}" class="btn btn-outline-secondary">Cancel</a>
+            </form>
+        </div></div>
+    </div>
+</div>
+{% endblock %}

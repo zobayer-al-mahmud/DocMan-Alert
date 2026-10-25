@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}{{ vehicle.registration_no }}{% endblock %}
+{% block page_title %}Vehicle · {{ vehicle.registration_no }}{% endblock %}
+
+{% block content %}
+<a href="{{ url_for('vehicles.list_vehicles') }}" class="btn btn-outline-secondary btn-sm mb-3">&larr; Vehicles</a>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6">
+                <h5>{{ vehicle.registration_no }}</h5>
+                <div><strong>Vehicle Type:</strong> {{ vehicle.vehicle_type or '-' }}</div>
+                <div><strong>Owner / Factory:</strong>
+                    {% if vehicle.factory %}{{ vehicle.factory.name }}
+                    {% elif vehicle.owner_name_raw %}<span class="text-muted">{{ vehicle.owner_name_raw }}</span>
+                    {% else %}-{% endif %}
+                </div>
+                <div><strong>Company:</strong> {{ vehicle.company.name if vehicle.company else '-' }}</div>
+                <div><strong>Office:</strong> {{ vehicle.office_label or '-' }}</div>
+                <div><strong>Status:</strong>
+                    {% if vehicle.is_active %}<span class="badge bg-success">Active</span>
+                    {% else %}<span class="badge bg-secondary">Archived</span>{% endif %}
+                </div>
+            </div>
+            <div class="col-md-6 text-end">
+                {% if can_manage %}
+                <a href="{{ url_for('vehicles.edit_vehicle', vehicle_id=vehicle.id) }}" class="btn btn-sm btn-outline-primary">Edit vehicle</a>
+                {% endif %}
+                {% if can_delete %}
+                <form method="POST" action="{{ url_for('vehicles.archive_vehicle', vehicle_id=vehicle.id) }}" style="display:inline;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-sm btn-outline-{% if vehicle.is_active %}danger{% else %}success{% endif %}"
+                            onclick="return confirm('{% if vehicle.is_active %}Archive this vehicle?{% else %}Restore this vehicle?{% endif %}');">
+                        {% if vehicle.is_active %}Archive{% else %}Restore{% endif %}
+                    </button>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if missing_required %}
+<div class="alert alert-warning">
+    <strong>Missing required document(s):</strong>
+    {% for t in missing_required %}{{ doc_type_labels[t] }}{% if not loop.last %}, {% endif %}{% endfor %}.
+    {% if can_manage %}
+    Add one using the matching card below.
+    {% endif %}
+</div>
+{% endif %}
+
+<div class="row g-3">
+    {% for row in doc_rows %}
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <h6 class="mb-0">{{ row.label }}</h6>
+                    {% if row.doc %}
+                    <span class="badge
+                        {% if row.doc.status == 'Expired' %}bg-danger
+                        {% elif row.doc.status == 'Expiring in 7 Days' %}bg-danger
+                        {% elif row.doc.status == 'Expiring in 30 Days' %}bg-warning text-dark
+                        {% elif row.doc.status in ['Expiring in 60 Days', 'Expiring in 90 Days'] %}bg-info text-dark
+                        {% else %}bg-success{% endif %}">
+                        {{ row.doc.status }}
+                    </span>
+                    {% else %}
+                    <span class="badge bg-light text-muted">Not recorded</span>
+                    {% endif %}
+                </div>
+                {% if row.doc %}
+                <div><strong>Document No.:</strong> {{ row.doc.doc_number or '-' }}</div>
+                <div><strong>Issue:</strong> {{ row.doc.issue_date or '-' }}</div>
+                <div><strong>Expiry:</strong>
+                    {% if row.doc.no_expiry %}<em>No expiry</em>
+                    {% elif row.doc.expiry_date %}{{ row.doc.expiry_date }}
+                    {% else %}-{% endif %}
+                </div>
+                {% if row.days is not none %}
+                <div><strong>Days remaining:</strong>
+                    {% if row.days < 0 %}<span class="text-danger">Expired {{ -row.days }} day(s) ago</span>
+                    {% elif row.days == 0 %}<span class="text-danger">Expires today</span>
+                    {% else %}{{ row.days }}{% endif %}
+                </div>
+                {% endif %}
+                {% if row.doc.note %}
+                <div class="mt-2 text-muted"><em>{{ row.doc.note }}</em></div>
+                {% endif %}
+                <div><strong>Renewal:</strong> {{ row.doc.renewal_status }}</div>
+
+                {% if row.doc.file_versions %}
+                <hr class="my-2">
+                <div class="small"><strong>File history:</strong></div>
+                <ul class="small mb-0">
+                    {% for fv in row.doc.file_versions|sort(attribute='version_no', reverse=True) %}
+                    <li>
+                        v{{ fv.version_no }} ·
+                        <a href="{{ url_for('vehicles.download_file', relative_path=fv.file_path) }}" target="_blank">File</a>
+                        · {{ fv.uploaded_at.strftime('%Y-%m-%d') if fv.uploaded_at else '-' }}
+                        {% if fv.expiry_date %} · exp {{ fv.expiry_date }}{% endif %}
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+
+                {% if can_manage %}
+                <div class="mt-3">
+                    <a href="{{ url_for('vehicles.edit_document', vehicle_id=vehicle.id, doc_type=row.doc_type) }}" class="btn btn-sm btn-outline-primary">Edit</a>
+                    <a href="{{ url_for('vehicles.renew_document', vehicle_id=vehicle.id, doc_type=row.doc_type) }}" class="btn btn-sm btn-outline-success">Renew / upload file</a>
+                </div>
+                {% endif %}
+
+                {% else %}
+                <p class="text-muted mb-2">No {{ row.label }} on file for this vehicle.</p>
+                {% if can_manage %}
+                <a href="{{ url_for('vehicles.edit_document', vehicle_id=vehicle.id, doc_type=row.doc_type) }}" class="btn btn-sm btn-outline-primary">Add {{ row.label }}</a>
+                {% endif %}
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

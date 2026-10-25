@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block title %}Vehicles{% endblock %}
+{% block page_title %}Vehicle Documents{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+    <div>
+        {% if show_archived %}
+        <a href="{{ url_for('vehicles.list_vehicles') }}" class="btn btn-outline-secondary btn-sm">Active vehicles</a>
+        {% else %}
+        <a href="{{ url_for('vehicles.list_vehicles', archived=1) }}" class="btn btn-outline-secondary btn-sm">Archived</a>
+        {% endif %}
+    </div>
+    <div class="d-flex gap-2">
+        {% if can_manage %}
+        <a href="{{ url_for('vehicles.add_vehicle') }}" class="btn btn-primary btn-sm">+ Add vehicle</a>
+        {% endif %}
+        {% if can_import %}
+        <a href="{{ url_for('vehicles.import_vehicles') }}" class="btn btn-outline-primary btn-sm">Import Excel</a>
+        {% endif %}
+    </div>
+</div>
+
+<form method="GET" class="card card-body mb-3 py-2">
+    <div class="row g-2">
+        <div class="col-md-3">
+            <input type="text" name="search" value="{{ selected_search }}" class="form-control form-control-sm" placeholder="Registration / type / owner">
+        </div>
+        <div class="col-md-2">
+            <select name="factory_id" class="form-select form-select-sm">
+                <option value="">All factories</option>
+                {% for f in factories %}
+                <option value="{{ f.id }}" {% if selected_factory_id == f.id %}selected{% endif %}>{{ f.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <select name="office" class="form-select form-select-sm">
+                <option value="">All offices</option>
+                {% for o in offices %}
+                <option value="{{ o }}" {% if selected_office == o %}selected{% endif %}>{{ o }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <select name="doc_type" class="form-select form-select-sm">
+                <option value="">Any doc type</option>
+                {% for t in doc_types %}
+                <option value="{{ t }}" {% if selected_doc_type == t %}selected{% endif %}>{{ doc_type_labels[t] }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <select name="status" class="form-select form-select-sm">
+                <option value="">Any status</option>
+                {% for s in all_statuses %}
+                <option value="{{ s }}" {% if selected_status == s %}selected{% endif %}>{{ s }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-1 d-flex gap-1">
+            <button type="submit" class="btn btn-sm btn-primary flex-fill">Filter</button>
+        </div>
+    </div>
+    <div class="row g-2 mt-1">
+        <div class="col-auto">
+            <label class="form-check-label small">
+                <input type="checkbox" name="missing" value="1" {% if missing_only %}checked{% endif %}
+                       class="form-check-input" onchange="this.form.submit()"> Missing required document (Tax Token)
+            </label>
+        </div>
+        <div class="col-auto">
+            <a href="{{ url_for('vehicles.list_vehicles') }}" class="btn btn-sm btn-link">Clear filters</a>
+        </div>
+    </div>
+</form>
+
+<div class="card">
+<table class="table table-sm mb-0 align-middle">
+    <thead>
+        <tr>
+            <th>Registration</th>
+            <th>Vehicle Type</th>
+            <th>Owner</th>
+            <th>Office</th>
+            <th>Tax Token</th>
+            <th>Fitness</th>
+            <th>Route Permit</th>
+            <th>Blue Book</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for v in vehicles %}
+        {% set by_type = {} %}
+        {% for d in v.documents if d.is_active %}{% set _ = by_type.update({d.doc_type: d}) %}{% endfor %}
+        <tr>
+            <td>
+                <a href="{{ url_for('vehicles.view_vehicle', vehicle_id=v.id) }}">
+                    <strong>{{ v.registration_no }}</strong>
+                </a>
+            </td>
+            <td>{{ v.vehicle_type or '-' }}</td>
+            <td>
+                {% if v.factory %}{{ v.factory.name }}
+                {% elif v.owner_name_raw %}<span class="text-muted">{{ v.owner_name_raw }}</span>
+                {% else %}-{% endif %}
+            </td>
+            <td>{{ v.office_label or '-' }}</td>
+            {% for t in ['tax_token', 'fitness', 'route_permit', 'blue_book'] %}
+            {% set d = by_type.get(t) %}
+            <td>
+                {% if d %}
+                    {% if d.expiry_date %}{{ d.expiry_date }}{% elif d.note %}<em>{{ d.note }}</em>{% else %}-{% endif %}
+                    <div class="small
+                        {% if d.status == 'Expired' %}text-danger
+                        {% elif d.status == 'Expiring in 7 Days' %}text-danger
+                        {% elif d.status == 'Expiring in 30 Days' %}text-warning
+                        {% else %}text-muted{% endif %}">
+                        {{ d.status }}
+                    </div>
+                {% else %}
+                    <span class="text-muted small">—</span>
+                {% endif %}
+            </td>
+            {% endfor %}
+            <td class="text-end">
+                <a href="{{ url_for('vehicles.view_vehicle', vehicle_id=v.id) }}" class="btn btn-sm btn-outline-primary">View</a>
+            </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="9" class="text-center text-muted py-4">No vehicles match these filters.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+
+{% if pagination.pages > 1 %}
+<nav class="mt-3">
+    <ul class="pagination pagination-sm">
+        {% for p in pagination.iter_pages() %}
+            {% if p %}
+                <li class="page-item {% if p == pagination.page %}active{% endif %}">
+                    <a class="page-link" href="{{ url_for('vehicles.list_vehicles', page=p, search=selected_search, factory_id=selected_factory_id, office=selected_office, doc_type=selected_doc_type, status=selected_status, missing=('1' if missing_only else None), archived=('1' if show_archived else None)) }}">{{ p }}</a>
+                </li>
+            {% else %}
+                <li class="page-item disabled"><span class="page-link">…</span></li>
+            {% endif %}
+        {% endfor %}
+    </ul>
+</nav>
+{% endif %}
+
+<p class="text-muted small mt-2">Showing {{ pagination.items|length }} of {{ pagination.total }} vehicles.</p>
+{% endblock %}
