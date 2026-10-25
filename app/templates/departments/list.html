@@ -25,7 +25,6 @@
             <td>{{ department.name }}</td>
             <td>{{ department.group_email or '-' }}</td>
             <td>
-                <a href="{{ url_for('admin.factory_department_recipients', department_id=department.id) }}" class="btn btn-sm btn-outline-primary">Alert Recipients</a>
                 {% if can_edit %}
                 <a href="{{ url_for('admin.edit_department', department_id=department.id) }}" class="btn btn-sm btn-secondary">Edit</a>
                 <form method="POST" action="{{ url_for('admin.delete_department', department_id=department.id) }}" style="display:inline;" onsubmit="return confirm('Are you sure?');">

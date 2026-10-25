@@ -40,7 +40,6 @@
 
                 {% if current_user.is_authenticated and current_user.role.name in ["Super Admin", "Administration", "Factory Admin"] %}
                 <a href="{{ url_for('admin.list_departments') }}" class="nav-link {% if active_page == 'departments' %}active{% endif %}">Departments</a>
-                <a href="{{ url_for('admin.factory_department_recipients') }}" class="nav-link {% if active_page == 'dept_recipients' %}active{% endif %}">Dept. Alert Recipients</a>
                 {% endif %}
                 {% if current_user.is_authenticated and current_user.role.name in ["Super Admin", "Factory Admin"] %}
                 <a href="{{ url_for('users.list_users') }}" class="nav-link {% if active_page == 'users' %}active{% endif %}">Users</a>
