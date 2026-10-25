@@ -105,6 +105,10 @@ def create_app():
             active = "documents"
         elif endpoint.startswith("employees."):
             active = "employees"
+        elif endpoint == "vehicles.dashboard":
+            # Transport roles reach this via the Dashboard sidebar link; keep
+            # that nav item highlighted instead of 'Vehicle Documents'.
+            active = "dashboard"
         elif endpoint.startswith("vehicles."):
             active = "vehicles"
         elif endpoint.startswith("regulatory.") and "categor" in endpoint:

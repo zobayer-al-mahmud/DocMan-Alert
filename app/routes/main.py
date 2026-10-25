@@ -1,6 +1,6 @@
 from datetime import date
 
-from flask import Blueprint, render_template, request, url_for
+from flask import Blueprint, render_template, request, redirect, url_for
 from flask_login import login_required, current_user
 from sqlalchemy import func
 from sqlalchemy.orm import joinedload, selectinload
@@ -32,6 +32,11 @@ def accessible_factory_ids():
 @main_bp.route("/")
 @login_required
 def dashboard():
+    # Transport roles get the vehicle-focused dashboard as their landing page.
+    # Everyone else sees the factory-documents dashboard below.
+    if current_user.role.name in ("Transport Manager", "Transport User"):
+        return redirect(url_for("vehicles.dashboard"))
+
     recalculate_all_statuses()
 
     scope_ids = accessible_factory_ids()

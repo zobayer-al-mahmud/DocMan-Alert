@@ -420,6 +420,170 @@ def renew_document(vehicle_id, doc_type):
     )
 
 
+# --- Transport dashboard ----------------------------------------------------
+
+def _month_key(d):
+    return d.strftime("%Y-%m")
+
+
+def _next_six_month_keys(today):
+    """Return the next 6 months' YYYY-MM keys starting with this month."""
+    keys = []
+    y, m = today.year, today.month
+    for _ in range(6):
+        keys.append(f"{y:04d}-{m:02d}")
+        m += 1
+        if m == 13:
+            m = 1
+            y += 1
+    return keys
+
+
+@vehicles_bp.route("/dashboard")
+@login_required
+@roles_required(*VIEW_ROLES)
+def dashboard():
+    from app.utils import recalculate_all_statuses
+    recalculate_all_statuses()
+
+    today = bst_today()
+    active_v = Vehicle.query.filter(Vehicle.is_active.is_(True))
+    total_vehicles = active_v.count()
+
+    # --- Document counts by status ---
+    doc_q = db.session.query(VehicleDocument.status, db.func.count(VehicleDocument.id)) \
+        .join(Vehicle, VehicleDocument.vehicle_id == Vehicle.id) \
+        .filter(Vehicle.is_active.is_(True), VehicleDocument.is_active.is_(True)) \
+        .group_by(VehicleDocument.status)
+    status_counts = {status: 0 for status in ALL_STATUSES}
+    total_docs = 0
+    for status, count in doc_q.all():
+        status_counts[status] = count
+        total_docs += count
+
+    expired_docs = status_counts.get(STATUS_EXPIRED, 0)
+    expiring_7 = status_counts.get("Expiring in 7 Days", 0)
+    expiring_30 = status_counts.get("Expiring in 30 Days", 0)
+    expiring_60 = status_counts.get("Expiring in 60 Days", 0)
+    expiring_90 = status_counts.get("Expiring in 90 Days", 0)
+
+    # --- Compliant vehicles: no attention-grade doc ---
+    attention_vehicle_ids = {
+        row[0] for row in db.session.query(VehicleDocument.vehicle_id)
+        .join(Vehicle, VehicleDocument.vehicle_id == Vehicle.id)
+        .filter(Vehicle.is_active.is_(True),
+                VehicleDocument.is_active.is_(True),
+                VehicleDocument.status.in_(ATTENTION_STATUSES))
+        .distinct()
+    }
+    compliant_vehicles = total_vehicles - len(attention_vehicle_ids)
+
+    # --- Missing required (no active tax_token) ---
+    has_tax_token = {
+        row[0] for row in db.session.query(VehicleDocument.vehicle_id)
+        .join(Vehicle, VehicleDocument.vehicle_id == Vehicle.id)
+        .filter(Vehicle.is_active.is_(True),
+                VehicleDocument.doc_type == "tax_token",
+                VehicleDocument.is_active.is_(True))
+        .distinct()
+    }
+    missing_required = total_vehicles - len(has_tax_token)
+
+    # --- Urgent renewals (Expired, 7d, 30d), sorted by expiry ---
+    critical_statuses = [STATUS_EXPIRED, "Expiring in 7 Days", "Expiring in 30 Days"]
+    urgent_rows = (
+        db.session.query(VehicleDocument, Vehicle)
+        .join(Vehicle, VehicleDocument.vehicle_id == Vehicle.id)
+        .options(joinedload(Vehicle.factory))
+        .filter(Vehicle.is_active.is_(True),
+                VehicleDocument.is_active.is_(True),
+                VehicleDocument.status.in_(critical_statuses),
+                VehicleDocument.expiry_date.isnot(None))
+        .order_by(VehicleDocument.expiry_date.asc())
+        .limit(10).all()
+    )
+    urgent = []
+    for doc, veh in urgent_rows:
+        days = (doc.expiry_date - today).days if doc.expiry_date else None
+        urgent.append({
+            "vehicle": veh,
+            "doc_type": doc.doc_type,
+            "doc_label": VEHICLE_DOC_LABELS[doc.doc_type],
+            "expiry": doc.expiry_date,
+            "days": days,
+            "status": doc.status,
+        })
+
+    # --- Monthly expiry chart (next 6 months, stacked by doc_type) ---
+    month_keys = _next_six_month_keys(today)
+    month_data = {k: {t: 0 for t in VEHICLE_DOC_TYPES} for k in month_keys}
+    chart_rows = (
+        db.session.query(VehicleDocument.doc_type, VehicleDocument.expiry_date)
+        .join(Vehicle, VehicleDocument.vehicle_id == Vehicle.id)
+        .filter(Vehicle.is_active.is_(True),
+                VehicleDocument.is_active.is_(True),
+                VehicleDocument.expiry_date.isnot(None),
+                VehicleDocument.expiry_date >= today)
+        .all()
+    )
+    for doc_type, expiry in chart_rows:
+        key = _month_key(expiry)
+        if key in month_data:
+            month_data[key][doc_type] += 1
+    chart = {
+        "months": month_keys,
+        "doc_types": list(VEHICLE_DOC_TYPES),
+        "labels": VEHICLE_DOC_LABELS,
+        "stacks": month_data,
+    }
+
+    # --- Owner / office breakdown ---
+    # Count docs per factory grouped by bucket (Valid / Attention / Expired).
+    breakdown_rows = (
+        db.session.query(
+            Vehicle.factory_id, Factory.name,
+            VehicleDocument.status, db.func.count(VehicleDocument.id),
+        )
+        .join(Vehicle, VehicleDocument.vehicle_id == Vehicle.id)
+        .outerjoin(Factory, Vehicle.factory_id == Factory.id)
+        .filter(Vehicle.is_active.is_(True), VehicleDocument.is_active.is_(True))
+        .group_by(Vehicle.factory_id, Factory.name, VehicleDocument.status)
+        .all()
+    )
+    breakdown = {}
+    for factory_id, name, status, count in breakdown_rows:
+        label = name or "— Unmapped / Personal —"
+        row = breakdown.setdefault(label, {"total": 0, "valid": 0, "attention": 0, "expired": 0})
+        row["total"] += count
+        if status == STATUS_EXPIRED:
+            row["expired"] += count
+        elif status in EXPIRING_STATUSES:
+            row["attention"] += count
+        else:
+            row["valid"] += count
+    breakdown_list = sorted(
+        [{"name": k, **v} for k, v in breakdown.items()],
+        key=lambda r: -r["total"],
+    )
+
+    return render_template(
+        "vehicles/dashboard.html",
+        total_vehicles=total_vehicles,
+        total_docs=total_docs,
+        compliant_vehicles=compliant_vehicles,
+        expired_docs=expired_docs,
+        expiring_7=expiring_7,
+        expiring_30=expiring_30,
+        expiring_60=expiring_60,
+        expiring_90=expiring_90,
+        missing_required=missing_required,
+        urgent=urgent,
+        chart=chart,
+        breakdown=breakdown_list,
+        today=today,
+    )
+
+
 # --- Download a stored file -------------------------------------------------
 
 @vehicles_bp.route("/files/<path:relative_path>")
