@@ -67,12 +67,13 @@ def _is_blank(value):
     return False
 
 
-def _parse_date_cell(value):
+def _parse_date_cell(value, allow_note=False):
     """(date | None, note | None, error | None).
 
-    A datetime cell is a real expiry date. A non-empty string that parses as
-    a date is accepted; a string that doesn't parse is returned as `note`
-    (callers decide whether that's valid for this column). Blank is blank.
+    A datetime / date cell is a real expiry date. A non-empty string that
+    parses as a date is accepted. For date-only columns (Tax Token, Fitness,
+    Route Permit) an unparseable string is an ERROR. For Blue Book pass
+    allow_note=True to accept text as a status note instead.
     """
     if _is_blank(value):
         return None, None, None
@@ -93,8 +94,9 @@ def _parse_date_cell(value):
             return datetime.strptime(text, fmt).date(), None, None
         except ValueError:
             continue
-    # Not a date — treat as a note.
-    return None, text, None
+    if allow_note:
+        return None, text, None
+    return None, None, f"unrecognized date '{text}'"
 
 
 def _detect_header_row(ws):
@@ -222,8 +224,10 @@ def parse_workbook(path_or_wb):
 
             reg_raw = raw.get("registration_no")
             if _is_blank(reg_raw):
-                # Skip empty trailing rows silently.
-                if all(_is_blank(v) for v in raw.values()):
+                # Skip empty rows silently. "Empty" means every column except
+                # SL / Last-4-Digit is blank, since those are auto-generated.
+                meaningful = {k: v for k, v in raw.items() if k not in ("sl", "last4")}
+                if all(_is_blank(v) for v in meaningful.values()):
                     continue
                 row_errors.append("Registration No is blank")
 
@@ -258,7 +262,9 @@ def parse_workbook(path_or_wb):
             if err:
                 row_errors.append(f"Route Permit Expiry: {err}")
 
-            bb_date, bb_note, err = _parse_date_cell(raw.get("blue_book"))
+            bb_date, bb_note, err = _parse_date_cell(
+                raw.get("blue_book"), allow_note=True,
+            )
             if err:
                 row_errors.append(f"Blue Book: {err}")
 

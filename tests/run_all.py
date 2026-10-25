@@ -26,6 +26,7 @@ TESTS = [
     "test_full_project.py",
     "test_ocr.py",
     "test_employee_ocr_extract.py",
+    "test_vehicles.py",
 ]
 
 
