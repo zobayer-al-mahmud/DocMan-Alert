@@ -447,6 +447,16 @@ def _record_scope(record, kind):
         factory = record.factory
         company_id = factory.company_id if factory else None
         return factory, record.department, company_id
+    if kind == "vehicle":
+        vehicle = getattr(record, "vehicle", None)
+        factory = vehicle.factory if vehicle else None
+        company_id = factory.company_id if factory else (vehicle.company_id if vehicle else None)
+        # Vehicles belong to the Transport department for alert routing.
+        from app.models import Department
+        transport_dept = Department.query.filter(
+            db.func.lower(Department.name) == "transport"
+        ).first()
+        return factory, transport_dept, company_id
     employee = getattr(record, "employee", None)
     factory = employee.factory if employee else None
     company_id = factory.company_id if factory else None
@@ -467,6 +477,10 @@ def resolve_alert_recipients(record, kind, index=None, skipped=None):
     users outside the record's factory are omitted. Invalid emails are omitted
     and, when `skipped` is a list, recorded for an operational log line.
     """
+    if kind == "vehicle":
+        # Vehicles have no department-recipient model; use the dedicated
+        # resolver that routes to Transport-role users + Transport mailbox.
+        return resolve_vehicle_alert_recipients(record, skipped=skipped)
     factory, department, company_id = _record_scope(record, kind)
     factory_id = factory.id if factory else None
     department_id = department.id if department else None
@@ -597,6 +611,16 @@ def record_snapshot(record, kind):
         issue_date = record.issue_date
         certificate = (record.cert_no or "").strip()
         subject_label = (record.doc_type or "Document").strip() or "Document"
+    elif kind == "vehicle":
+        from app.models import VEHICLE_DOC_LABELS
+        vehicle = record.vehicle
+        label = VEHICLE_DOC_LABELS.get(record.doc_type, record.doc_type or "Vehicle document")
+        reg = vehicle.registration_no if vehicle else "Vehicle"
+        title = f"{label} — {reg}"
+        doc_type = label
+        issue_date = record.issue_date
+        certificate = (record.doc_number or "").strip()
+        subject_label = label
     elif kind == "license":
         base = (record.compliance_type or "License").strip() or "License"
         employee = record.employee
@@ -786,7 +810,7 @@ def _chunks(items, size):
 
 def _alert_load_options(kind):
     from sqlalchemy.orm import joinedload, selectinload
-    from app.models import Factory
+    from app.models import Factory, Vehicle
     if kind == "document":
         return (
             joinedload(Document.factory).joinedload(Factory.company),
@@ -800,6 +824,11 @@ def _alert_load_options(kind):
             joinedload(EmployeeCompliance.employee).joinedload(Employee.department),
             joinedload(EmployeeCompliance.creator).joinedload(User.role),
             selectinload(EmployeeCompliance.alert_recipients).joinedload(User.role),
+        )
+    if kind == "vehicle":
+        return (
+            joinedload(VehicleDocument.vehicle).joinedload(Vehicle.factory).joinedload(Factory.company),
+            joinedload(VehicleDocument.vehicle).joinedload(Vehicle.creator).joinedload(User.role),
         )
     return (
         joinedload(HealthCheckup.employee).joinedload(Employee.factory).joinedload(Factory.company),
@@ -883,6 +912,7 @@ def _bucket_records(records_by_kind, index, skipped):
                     "document": [],
                     "license": [],
                     "checkup": [],
+                    "vehicle": [],
                 })
                 if bucket["user"] is None and person["user"] is not None:
                     bucket["user"] = person["user"]
@@ -902,7 +932,7 @@ def _bucket_items(bucket):
     return records, items
 
 
-def send_compliance_alert(documents=None, licenses=None, checkups=None):
+def send_compliance_alert(documents=None, licenses=None, checkups=None, vehicles=None):
     """Send the Saturday summary for 90/60/30-day records.
 
     Each record goes to its assigned people, or to the department, or to the
@@ -915,12 +945,14 @@ def send_compliance_alert(documents=None, licenses=None, checkups=None):
 
     Returns (sent: bool, error: str|None, total_count: int).
     """
-    queried = documents is None and licenses is None and checkups is None
+    queried = (documents is None and licenses is None
+               and checkups is None and vehicles is None)
     if queried:
         recalculate_all_statuses()
         documents = _load_attention(Document, NORMAL_ALERT_STATUSES, "document")
         licenses = _load_attention(EmployeeCompliance, NORMAL_ALERT_STATUSES, "license")
         checkups = _load_attention(HealthCheckup, NORMAL_ALERT_STATUSES, "checkup")
+        vehicles = _load_attention(VehicleDocument, NORMAL_ALERT_STATUSES, "vehicle")
     else:
         # Explicit record lists are still filtered to the weekly buckets
         # (90 / 60 / 30 days). Classification is computed from the current
@@ -936,15 +968,17 @@ def send_compliance_alert(documents=None, licenses=None, checkups=None):
         documents = [d for d in (documents or []) if _in_weekly(d)]
         licenses = [l for l in (licenses or []) if _in_weekly(l)]
         checkups = [c for c in (checkups or []) if _in_weekly(c)]
+        vehicles = [v for v in (vehicles or []) if _in_weekly(v)]
 
-    total_count = len(documents) + len(licenses) + len(checkups)
+    total_count = len(documents) + len(licenses) + len(checkups) + len(vehicles)
     if total_count == 0:
         return False, None, 0
 
     index = RecipientIndex.load()
     skipped = []
     buckets = _bucket_records(
-        (("document", documents), ("license", licenses), ("checkup", checkups)),
+        (("document", documents), ("license", licenses),
+         ("checkup", checkups), ("vehicle", vehicles)),
         index,
         skipped,
     )
@@ -959,7 +993,7 @@ def send_compliance_alert(documents=None, licenses=None, checkups=None):
     )
     for email in sorted(buckets):
         bucket = buckets[email]
-        for kind in ("document", "license", "checkup"):
+        for kind in ("document", "license", "checkup", "vehicle"):
             for record, sources in bucket[kind]:
                 snapshot = record_snapshot(record, kind)
                 subject = weekly_subject_for(snapshot)
@@ -1033,7 +1067,7 @@ def _existing_dispatches(records_by_kind):
     return found
 
 
-def send_emergency_alerts(documents=None, licenses=None, checkups=None):
+def send_emergency_alerts(documents=None, licenses=None, checkups=None, vehicles=None):
     """Send urgent alerts for 7-day and expired records, once per threshold.
 
     The same record and expiry are not emailed again for the same status.
@@ -1042,17 +1076,21 @@ def send_emergency_alerts(documents=None, licenses=None, checkups=None):
 
     Returns (sent: bool, error: str|None, newly_alerted_count: int).
     """
-    queried = documents is None and licenses is None and checkups is None
+    queried = (documents is None and licenses is None
+               and checkups is None and vehicles is None)
     if queried:
         documents = _load_attention(Document, EMERGENCY_STATUSES, "document")
         licenses = _load_attention(EmployeeCompliance, EMERGENCY_STATUSES, "license")
         checkups = _load_attention(HealthCheckup, EMERGENCY_STATUSES, "checkup")
+        vehicles = _load_attention(VehicleDocument, EMERGENCY_STATUSES, "vehicle")
     else:
         documents = documents or []
         licenses = licenses or []
         checkups = checkups or []
+        vehicles = vehicles or []
 
-    groups = (("document", documents), ("license", licenses), ("checkup", checkups))
+    groups = (("document", documents), ("license", licenses),
+              ("checkup", checkups), ("vehicle", vehicles))
     already = _existing_dispatches(groups)
     index = RecipientIndex.load()
     skipped = []
@@ -1155,6 +1193,153 @@ def send_emergency_alerts(documents=None, licenses=None, checkups=None):
         username_or_process="system",
     )
     return False, error_text, 0
+
+
+def resolve_vehicle_alert_recipients(vehicle_document, skipped=None):
+    """Recipients for a vehicle-document alert.
+
+    Vehicles have no department-recipient model; alerts go to:
+    - All active users with role Transport Manager or Transport User whose
+      factory matches the vehicle's factory, OR who have Global Access
+      (factory_id IS NULL).
+    - The vehicle's creator (any role, if active with a valid email).
+    - The Transport department's group mailbox + any ALWAYS_INCLUDE
+      global mailboxes.
+
+    Returns [{user, email, sources}, ...] de-duplicated by email.
+    """
+    from app.models import Department
+    vehicle = vehicle_document.vehicle
+    factory = vehicle.factory if vehicle else None
+    factory_id = factory.id if factory else None
+    found = {}
+
+    def consider(user, source):
+        if user is None or not user.is_active:
+            return
+        if not valid_email(user.email):
+            if skipped is not None:
+                skipped.append({"username": user.username or "user",
+                                "reason": "Invalid or missing email"})
+            return
+        key = user.email.strip().lower()
+        slot = found.setdefault(key, {"user": user, "email": user.email.strip(),
+                                        "sources": []})
+        if source not in slot["sources"]:
+            slot["sources"].append(source)
+
+    # Transport-role users with factory match or Global Access (factory_id NULL)
+    from app.models import Role
+    role_ids = [r.id for r in Role.query.filter(
+        Role.name.in_(("Transport Manager", "Transport User"))
+    ).all()]
+    transport_users = []
+    if role_ids:
+        transport_users = User.query.filter(
+            User.is_active.is_(True),
+            User.role_id.in_(role_ids),
+        ).all()
+    for user in transport_users:
+        if factory_id is None or user.factory_id in (None, factory_id):
+            consider(user, SOURCE_DOCUMENT)
+
+    # Vehicle creator
+    if vehicle and vehicle.creator is not None:
+        consider(vehicle.creator, SOURCE_UPLOADER)
+
+    # Transport department group mailbox
+    transport_dept = Department.query.filter(
+        db.func.lower(Department.name) == "transport"
+    ).first()
+    for email in department_group_emails(transport_dept):
+        key = email.lower()
+        slot = found.setdefault(key, {"user": None, "email": email, "sources": []})
+        if SOURCE_GROUP not in slot["sources"]:
+            slot["sources"].append(SOURCE_GROUP)
+
+    rows = list(found.values())
+    for row in rows:
+        row["sources"] = [name for name in SOURCE_ORDER if name in row["sources"]]
+    return rows
+
+
+def send_manual_vehicle_doc_alert(vehicle_document, users, group_emails=None):
+    """Email the selected users and group mailboxes for one vehicle document.
+
+    Mirrors send_manual_document_alert for Vehicle Documents. The caller is
+    responsible for validating that `users` and `group_emails` come from the
+    allowed recipient list (see resolve_vehicle_alert_recipients).
+    """
+    vehicle = vehicle_document.vehicle
+    selected = []
+    seen = set()
+    for user in users or []:
+        if user is None or not user.is_active or not valid_email(user.email):
+            continue
+        address = user.email.strip()
+        key = address.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        selected.append((user, address, [SOURCE_DOCUMENT]))
+    if group_emails is None:
+        from app.models import Department
+        transport_dept = Department.query.filter(
+            db.func.lower(Department.name) == "transport"
+        ).first()
+        group_emails = department_group_emails(transport_dept)
+    for address in group_emails or []:
+        if not valid_email(address):
+            continue
+        clean = address.strip()
+        key = clean.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        selected.append((None, clean, [SOURCE_GROUP]))
+    if not selected:
+        return False, "No valid recipients to send to.", 0
+
+    snapshot = record_snapshot(vehicle_document, "vehicle")
+    subject = manual_subject_for(snapshot)
+    intro = "This manual alert is for the vehicle document below."
+    sent_count = 0
+    errors = []
+    for user, address, sources in selected:
+        name = (user.full_name or user.username) if user is not None else "Recipient"
+        item = _history_item("vehicle", vehicle_document, sources) if False else None
+        # _history_item requires 'document'/'license'/'checkup' kinds; vehicle
+        # history is still useful but out of scope for v1. Pass [] so the
+        # AlertEmail row records the message without an item snapshot.
+        error_name = _deliver_alert(
+            "manual",
+            subject,
+            address,
+            user,
+            build_single_alert_html(snapshot, intro, name),
+            [],
+        )
+        if error_name:
+            errors.append(f"{address}: {error_name}")
+        else:
+            sent_count += 1
+    if sent_count and not errors:
+        log_event(
+            "ALERT_SENT",
+            f"Manual alert for vehicle document {vehicle_document.id} "
+            f"({vehicle.registration_no if vehicle else '-'}) sent to {sent_count} recipient(s).",
+            username_or_process="system",
+        )
+        return True, None, sent_count
+    error_text = "; ".join(errors) if errors else "Manual alert was not sent."
+    log_event(
+        "ALERT_FAILED",
+        f"Manual alert for vehicle document {vehicle_document.id}: "
+        f"sent {sent_count}, issues: {error_text}"[:2000],
+        level="ERROR",
+        username_or_process="system",
+    )
+    return sent_count > 0, error_text, sent_count
 
 
 def send_manual_document_alert(document, users, group_emails=None):

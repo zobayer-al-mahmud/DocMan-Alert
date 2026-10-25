@@ -107,9 +107,10 @@
                 {% endif %}
 
                 {% if can_manage %}
-                <div class="mt-3">
+                <div class="mt-3 d-flex flex-wrap gap-1">
                     <a href="{{ url_for('vehicles.edit_document', vehicle_id=vehicle.id, doc_type=row.doc_type) }}" class="btn btn-sm btn-outline-primary">Edit</a>
                     <a href="{{ url_for('vehicles.renew_document', vehicle_id=vehicle.id, doc_type=row.doc_type) }}" class="btn btn-sm btn-outline-success">Renew / upload file</a>
+                    <a href="{{ url_for('vehicles.send_doc_alert', vehicle_id=vehicle.id, doc_type=row.doc_type) }}" class="btn btn-sm btn-outline-warning">Send alert</a>
                 </div>
                 {% endif %}
 

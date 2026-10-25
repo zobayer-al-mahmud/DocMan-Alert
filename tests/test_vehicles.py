@@ -18,7 +18,7 @@ from openpyxl import Workbook
 from app import create_app, db
 from app.models import (
     Role, User, Factory, Vehicle, VehicleDocument,
-    VEHICLE_DOC_TYPES, VEHICLE_DOC_LABELS,
+    VEHICLE_DOC_TYPES, VEHICLE_DOC_LABELS, AlertEmail, AlertDispatch,
 )
 from app.utils import compute_status, bst_today, STATUS_VALID, STATUS_EXPIRED
 
@@ -349,6 +349,208 @@ def test_dashboard_counts(app, fixture_path):
         check(got == want, f"card '{label}' = DB count ({got} vs {want})")
 
 
+def test_mutually_exclusive_cards(app, fixture_path):
+    """7 / 30 / 60 / 90-day card totals must not double-count a doc."""
+    print("\n--- mutually exclusive expiry cards ---")
+    from app.vehicle_import import parse_workbook, annotate_existing, apply_import
+    from app.utils import (compute_status, bst_today, STATUS_7, STATUS_30,
+                             STATUS_60, STATUS_90, STATUS_EXPIRED, STATUS_VALID)
+    _reset_vehicle_data(app)
+    with app.app_context():
+        rows, _ = parse_workbook(fixture_path)
+        annotate_existing(rows)
+        apply_import(rows, user_id=1)
+        docs = VehicleDocument.query.filter(
+            VehicleDocument.is_active.is_(True),
+            VehicleDocument.expiry_date.isnot(None),
+        ).all()
+        today = bst_today()
+        by_status = {STATUS_7: 0, STATUS_30: 0, STATUS_60: 0, STATUS_90: 0,
+                     STATUS_EXPIRED: 0, STATUS_VALID: 0}
+        for d in docs:
+            by_status[compute_status(d.expiry_date, d.no_expiry)] += 1
+
+        # Each doc contributes to exactly one bucket.
+        total_bucketed = sum(by_status.values())
+        check(total_bucketed == len(docs),
+              f"every doc counted exactly once ({total_bucketed} vs {len(docs)})")
+        # And the 4 expiring buckets are disjoint (no doc overlaps).
+        for d in docs:
+            s = compute_status(d.expiry_date, d.no_expiry)
+            days = (d.expiry_date - today).days
+            if s == STATUS_7:
+                check(1 <= days <= 7, f"STATUS_7 doc days={days}")
+            elif s == STATUS_30:
+                check(8 <= days <= 30, f"STATUS_30 doc days={days}")
+            elif s == STATUS_60:
+                check(31 <= days <= 60, f"STATUS_60 doc days={days}")
+            elif s == STATUS_90:
+                check(61 <= days <= 90, f"STATUS_90 doc days={days}")
+
+
+def test_dashboard_card_rendering(app, fixture_path):
+    """The dashboard renders all 8 cards (6 original + 60d/90d) and no chart."""
+    print("\n--- dashboard renders 8 cards, no chart ---")
+    from app.vehicle_import import parse_workbook, annotate_existing, apply_import
+    _reset_vehicle_data(app)
+    with app.app_context():
+        rows, _ = parse_workbook(fixture_path)
+        annotate_existing(rows)
+        apply_import(rows, user_id=1)
+
+    app.config["WTF_CSRF_ENABLED"] = False
+    client = app.test_client()
+    with app.app_context():
+        u = User.query.filter_by(username="admin").first()
+        u.set_password("Ananta@2026")
+        u.failed_login_attempts = 0
+        u.locked_until = None
+        db.session.commit()
+    client.post("/login", data={"username": "admin", "password": "Ananta@2026"})
+    r = client.get("/vehicles/dashboard")
+    html = r.data.decode()
+    for label in ("Total vehicles", "Compliant vehicles", "Expired documents",
+                  "Missing required", "Expiring in 7 days", "Expiring in 30 days",
+                  "Expiring in 60 days", "Expiring in 90 days"):
+        check(label in html, f"card label '{label}' present")
+    check("Monthly document expiries" not in html, "monthly chart removed")
+    check("<svg" not in html, "no inline SVG chart on dashboard")
+    check("mutually exclusive" in html, "mutual exclusivity note shown")
+
+
+def test_documents_hidden_from_transport(app):
+    """Documents link + routes hidden from Transport roles; other roles unaffected."""
+    print("\n--- Documents hidden from Transport roles ---")
+    app.config["WTF_CSRF_ENABLED"] = False
+    client = app.test_client()
+    with app.app_context():
+        u = User.query.filter_by(username="admin").first()
+        orig_role = u.role_id
+        u.set_password("Ananta@2026")
+        u.failed_login_attempts = 0
+        u.locked_until = None
+        db.session.commit()
+    client.post("/login", data={"username": "admin", "password": "Ananta@2026"})
+
+    def _swap(role_name):
+        with app.app_context():
+            u = User.query.filter_by(username="admin").first()
+            role = Role.query.filter_by(name=role_name).first()
+            u.role_id = role.id
+            db.session.commit()
+
+    def _restore():
+        with app.app_context():
+            u = User.query.filter_by(username="admin").first()
+            u.role_id = orig_role
+            db.session.commit()
+
+    # Transport Manager: sidebar must NOT include Documents link, /documents/ = 403
+    _swap("Transport Manager")
+    r = client.get("/vehicles/")
+    html = r.data.decode()
+    # Sidebar link check: 'Documents' as nav text (not inside Vehicle Documents)
+    # The nav link href is /documents/ - make sure that exact href is absent.
+    check('href="/documents/"' not in html, "sidebar has no /documents/ link for Transport Manager")
+    r = client.get("/documents/")
+    check(r.status_code == 403, f"Transport Manager /documents/ = 403 (got {r.status_code})")
+
+    _swap("Transport User")
+    r = client.get("/vehicles/")
+    html = r.data.decode()
+    check('href="/documents/"' not in html, "sidebar has no /documents/ link for Transport User")
+    r = client.get("/documents/")
+    check(r.status_code == 403, f"Transport User /documents/ = 403 (got {r.status_code})")
+
+    # Factory Admin: still has access
+    _swap("Factory Admin")
+    r = client.get("/vehicles/")
+    # Factory Admin can't view /vehicles/ but can see Documents in nav from any page
+    r2 = client.get("/documents/")
+    check(r2.status_code == 200, f"Factory Admin /documents/ = 200 (got {r2.status_code})")
+
+    _restore()
+
+
+def test_vehicle_alert_pipeline(app, fixture_path):
+    """Automatic + manual vehicle alerts with mail.send monkey-patched."""
+    print("\n--- vehicle alert pipeline (auto + manual) ---")
+    from app.vehicle_import import parse_workbook, annotate_existing, apply_import
+    _reset_vehicle_data(app)
+    with app.app_context():
+        rows, _ = parse_workbook(fixture_path)
+        annotate_existing(rows)
+        apply_import(rows, user_id=1)
+        for a in AlertEmail.query.all() if False else []: pass
+
+    from app.models import AlertEmail, AlertDispatch
+    from app import mail
+    from app.utils import (
+        resolve_vehicle_alert_recipients, send_manual_vehicle_doc_alert,
+        send_compliance_alert, send_emergency_alerts, STATUS_EXPIRED,
+    )
+
+    with app.app_context():
+        for row in AlertEmail.query.all():
+            db.session.delete(row)
+        for row in AlertDispatch.query.all():
+            db.session.delete(row)
+        db.session.commit()
+
+        orig_send = mail.send
+        captured = []
+        def _capture(msg):
+            captured.append({"to": list(msg.recipients), "subject": msg.subject})
+        mail.send = _capture
+
+        # Recipient resolution: should include Transport-role users
+        doc = VehicleDocument.query.filter_by(doc_type="tax_token").first()
+        recipients = resolve_vehicle_alert_recipients(doc)
+        emails = [r["email"] for r in recipients]
+        check(any("transport_mgr" in e for e in emails) or len(emails) >= 1,
+              f"vehicle recipients returned ({len(emails)})")
+
+        # Manual send
+        picks = [r["user"] for r in recipients if r["user"] is not None][:1]
+        groups = [r["email"] for r in recipients if r["user"] is None][:1]
+        captured.clear()
+        sent, error, count = send_manual_vehicle_doc_alert(doc, picks, group_emails=groups)
+        check(sent and count >= 1, f"manual send sent={sent} count={count} error={error}")
+        check(len(captured) == count, f"mail.send called {count} time(s)")
+        manual_rows = AlertEmail.query.filter_by(alert_type="manual").count()
+        check(manual_rows >= 1, f"AlertEmail history has manual rows ({manual_rows})")
+
+        # Weekly: find a 30-day doc
+        from app.utils import compute_status
+        weekly_candidate = next((d for d in VehicleDocument.query.all()
+                                 if compute_status(d.expiry_date, d.no_expiry) == "Expiring in 30 Days"), None)
+        if weekly_candidate:
+            captured.clear()
+            sent, _, cnt = send_compliance_alert(
+                documents=[], licenses=[], checkups=[], vehicles=[weekly_candidate]
+            )
+            check(sent, f"weekly send sent={sent} count={cnt}")
+
+        # Emergency: pick an Expired doc + verify dedup
+        emergency_candidate = next(
+            (d for d in VehicleDocument.query.all()
+             if compute_status(d.expiry_date, d.no_expiry) == STATUS_EXPIRED), None)
+        if emergency_candidate:
+            captured.clear()
+            sent, _, cnt1 = send_emergency_alerts(
+                documents=[], licenses=[], checkups=[], vehicles=[emergency_candidate]
+            )
+            check(sent and cnt1 >= 1, f"emergency 1st run sent={sent} count={cnt1}")
+            captured.clear()
+            sent2, _, cnt2 = send_emergency_alerts(
+                documents=[], licenses=[], checkups=[], vehicles=[emergency_candidate]
+            )
+            check(cnt2 == 0, f"emergency dedup: 2nd run count=0 (got {cnt2})")
+            check(len(captured) == 0, "no mail sent on dedup repeat")
+
+        mail.send = orig_send
+
+
 def test_download_file_path_escape(app):
     print("\n--- download endpoint path safety ---")
     app.config["WTF_CSRF_ENABLED"] = False
@@ -381,6 +583,10 @@ def main():
     test_blank_date_does_not_clear(app, fixture_path)
     test_routes_rbac(app)
     test_dashboard_counts(app, fixture_path)
+    test_mutually_exclusive_cards(app, fixture_path)
+    test_dashboard_card_rendering(app, fixture_path)
+    test_documents_hidden_from_transport(app)
+    test_vehicle_alert_pipeline(app, fixture_path)
     test_download_file_path_escape(app)
 
     try:

@@ -24,12 +24,18 @@ from app.utils import (
 
 documents_bp = Blueprint("documents", __name__, url_prefix="/documents")
 
+# Factory certificates are not a Transport-role concern. Transport Manager
+# and Transport User have their own module at /vehicles.
+VIEW_ROLES = (
+    "Super Admin", "Administration", "Factory Admin",
+    "Compliance Manager", "Compliance User", "Compliance Viewer",
+)
 MANAGE_ROLES = (
-    "Super Admin", "Factory Admin", "Compliance Manager", "Compliance User",
-    "Transport Manager", "Transport User", "Administration",
+    "Super Admin", "Administration", "Factory Admin",
+    "Compliance Manager", "Compliance User",
 )
 DELETE_ROLES = (
-    "Super Admin", "Factory Admin", "Compliance Manager", "Transport Manager", "Administration",
+    "Super Admin", "Administration", "Factory Admin", "Compliance Manager",
 )
 
 DOC_TYPE_SUGGESTIONS = [
@@ -250,6 +256,7 @@ def apply_document_filters(query):
 
 @documents_bp.route("/")
 @login_required
+@roles_required(*VIEW_ROLES)
 def list_documents():
     show_archived = request.args.get("archived") == "1"
     query = Document.query.options(joinedload(Document.factory), joinedload(Document.department))
@@ -604,6 +611,7 @@ def restore_document(document_id):
 
 @documents_bp.route("/view/<int:document_id>")
 @login_required
+@roles_required(*VIEW_ROLES)
 def view_document(document_id):
     document = Document.query.options(
         joinedload(Document.factory), joinedload(Document.department),
@@ -743,6 +751,7 @@ def _public_file_name(version):
 
 @documents_bp.route("/download/<int:version_id>")
 @login_required
+@roles_required(*VIEW_ROLES)
 def download_file(version_id):
     version = DocumentVersion.query.get_or_404(version_id)
     if not can_access_factory(version.document.factory_id):
@@ -755,6 +764,7 @@ def download_file(version_id):
 
 @documents_bp.route("/file/<int:version_id>")
 @login_required
+@roles_required(*VIEW_ROLES)
 def view_file(version_id):
     version = DocumentVersion.query.get_or_404(version_id)
     if not can_access_factory(version.document.factory_id):

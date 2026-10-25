@@ -24,6 +24,8 @@ from app.forms import VehicleForm, VehicleDocumentForm, VehicleDocumentRenewForm
 from app.utils import (
     roles_required, compute_status, ALL_STATUSES, log_event, bst_today,
     EXPIRING_STATUSES, STATUS_VALID, STATUS_EXPIRED, ATTENTION_STATUSES,
+    resolve_vehicle_alert_recipients, send_manual_vehicle_doc_alert,
+    valid_email,
 )
 
 vehicles_bp = Blueprint("vehicles", __name__, url_prefix="/vehicles")
@@ -422,23 +424,6 @@ def renew_document(vehicle_id, doc_type):
 
 # --- Transport dashboard ----------------------------------------------------
 
-def _month_key(d):
-    return d.strftime("%Y-%m")
-
-
-def _next_six_month_keys(today):
-    """Return the next 6 months' YYYY-MM keys starting with this month."""
-    keys = []
-    y, m = today.year, today.month
-    for _ in range(6):
-        keys.append(f"{y:04d}-{m:02d}")
-        m += 1
-        if m == 13:
-            m = 1
-            y += 1
-    return keys
-
-
 @vehicles_bp.route("/dashboard")
 @login_required
 @roles_required(*VIEW_ROLES)
@@ -514,29 +499,6 @@ def dashboard():
             "status": doc.status,
         })
 
-    # --- Monthly expiry chart (next 6 months, stacked by doc_type) ---
-    month_keys = _next_six_month_keys(today)
-    month_data = {k: {t: 0 for t in VEHICLE_DOC_TYPES} for k in month_keys}
-    chart_rows = (
-        db.session.query(VehicleDocument.doc_type, VehicleDocument.expiry_date)
-        .join(Vehicle, VehicleDocument.vehicle_id == Vehicle.id)
-        .filter(Vehicle.is_active.is_(True),
-                VehicleDocument.is_active.is_(True),
-                VehicleDocument.expiry_date.isnot(None),
-                VehicleDocument.expiry_date >= today)
-        .all()
-    )
-    for doc_type, expiry in chart_rows:
-        key = _month_key(expiry)
-        if key in month_data:
-            month_data[key][doc_type] += 1
-    chart = {
-        "months": month_keys,
-        "doc_types": list(VEHICLE_DOC_TYPES),
-        "labels": VEHICLE_DOC_LABELS,
-        "stacks": month_data,
-    }
-
     # --- Owner / office breakdown ---
     # Count docs per factory grouped by bucket (Valid / Attention / Expired).
     breakdown_rows = (
@@ -578,9 +540,72 @@ def dashboard():
         expiring_90=expiring_90,
         missing_required=missing_required,
         urgent=urgent,
-        chart=chart,
         breakdown=breakdown_list,
         today=today,
+        can_alert=current_user.role.name in MANAGE_ROLES,
+    )
+
+
+# --- Manual Send Alert ------------------------------------------------------
+
+@vehicles_bp.route("/<int:vehicle_id>/docs/<doc_type>/send-alert", methods=["GET", "POST"])
+@login_required
+@roles_required(*MANAGE_ROLES)
+def send_doc_alert(vehicle_id, doc_type):
+    if doc_type not in VEHICLE_DOC_TYPES:
+        abort(404)
+    vehicle = _get_vehicle_or_404(vehicle_id)
+    doc = next((d for d in vehicle.documents if d.doc_type == doc_type and d.is_active), None)
+    if doc is None:
+        flash("Add the document first before sending an alert.", "warning")
+        return redirect(url_for("vehicles.view_vehicle", vehicle_id=vehicle.id))
+
+    allowed = resolve_vehicle_alert_recipients(doc)
+    allowed_user_ids = {row["user"].id for row in allowed if row["user"] is not None}
+    allowed_group_emails = [row["email"] for row in allowed if row["user"] is None]
+
+    if request.method == "POST":
+        posted_user_ids = set()
+        for raw in request.form.getlist("recipient_id"):
+            try:
+                posted_user_ids.add(int(raw))
+            except (TypeError, ValueError):
+                continue
+        posted_group = {
+            address.strip().lower()
+            for address in request.form.getlist("group_email")
+            if address and address.strip()
+        }
+        chosen_users = [
+            row["user"] for row in allowed
+            if row["user"] is not None and row["user"].id in posted_user_ids
+        ]
+        chosen_group = [
+            addr for addr in allowed_group_emails
+            if addr.lower() in posted_group
+        ]
+        if not chosen_users and not chosen_group:
+            flash("Select at least one recipient for this alert.", "danger")
+        else:
+            sent, error, count = send_manual_vehicle_doc_alert(
+                doc, chosen_users, group_emails=chosen_group,
+            )
+            if sent and not error:
+                flash(f"Alert sent to {count} recipient(s).", "success")
+                return redirect(url_for("vehicles.view_vehicle", vehicle_id=vehicle.id))
+            if sent:
+                flash("The alert was only partly sent. See Alert History.", "warning")
+            else:
+                flash("The alert could not be sent. See Alert History.", "danger")
+            return redirect(url_for("vehicles.view_vehicle", vehicle_id=vehicle.id))
+
+    return render_template(
+        "vehicles/send_alert.html",
+        vehicle=vehicle,
+        doc=doc,
+        doc_type_label=VEHICLE_DOC_LABELS[doc_type],
+        allowed_users=[row["user"] for row in allowed if row["user"] is not None],
+        allowed_group_emails=allowed_group_emails,
     )
 
 

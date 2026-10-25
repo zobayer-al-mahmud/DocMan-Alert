@@ -3,31 +3,31 @@
 {% block page_title %}Transport Dashboard{% endblock %}
 
 {% block content %}
+{#
+  Mutually exclusive expiry windows (status engine, computed per document):
+    Expiring in 7 Days  = due in 1-7 days
+    Expiring in 30 Days = due in 8-30 days
+    Expiring in 60 Days = due in 31-60 days
+    Expiring in 90 Days = due in 61-90 days
+    Expired             = expiry today or earlier
+  A document falls into exactly one bucket, so a doc counted on the 30-day
+  card is never also counted on the 60-day card.
+#}
 <div class="row g-3 mb-3">
-    <div class="col-md-2 col-6">
+    <div class="col-md-3 col-sm-6">
         <a href="{{ url_for('vehicles.list_vehicles') }}" class="text-decoration-none">
             <div class="stat-card"><div class="stat-label">Total vehicles</div><div class="stat-value">{{ total_vehicles }}</div></div>
         </a>
     </div>
-    <div class="col-md-2 col-6">
+    <div class="col-md-3 col-sm-6">
         <div class="stat-card stat-success"><div class="stat-label">Compliant vehicles</div><div class="stat-value">{{ compliant_vehicles }}</div></div>
     </div>
-    <div class="col-md-2 col-6">
+    <div class="col-md-3 col-sm-6">
         <a href="{{ url_for('vehicles.list_vehicles', status='Expired') }}" class="text-decoration-none">
             <div class="stat-card stat-danger"><div class="stat-label">Expired documents</div><div class="stat-value">{{ expired_docs }}</div></div>
         </a>
     </div>
-    <div class="col-md-2 col-6">
-        <a href="{{ url_for('vehicles.list_vehicles', status='Expiring in 7 Days') }}" class="text-decoration-none">
-            <div class="stat-card stat-danger"><div class="stat-label">Expiring in 7 days</div><div class="stat-value">{{ expiring_7 }}</div></div>
-        </a>
-    </div>
-    <div class="col-md-2 col-6">
-        <a href="{{ url_for('vehicles.list_vehicles', status='Expiring in 30 Days') }}" class="text-decoration-none">
-            <div class="stat-card stat-warning"><div class="stat-label">Expiring in 30 days</div><div class="stat-value">{{ expiring_30 }}</div></div>
-        </a>
-    </div>
-    <div class="col-md-2 col-6">
+    <div class="col-md-3 col-sm-6">
         <a href="{{ url_for('vehicles.list_vehicles', missing=1) }}" class="text-decoration-none">
             <div class="stat-card stat-warning"><div class="stat-label">Missing required</div><div class="stat-value">{{ missing_required }}</div></div>
         </a>
@@ -35,98 +35,75 @@
 </div>
 
 <div class="row g-3 mb-3">
-    <div class="col-md-6">
-        <div class="card h-100">
-            <div class="card-header fw-bold">Urgent renewals</div>
-            <table class="table table-sm mb-0">
-                <thead>
-                    <tr><th>Registration</th><th>Document</th><th>Expiry</th><th>Days</th><th>Status</th></tr>
-                </thead>
-                <tbody>
-                    {% for u in urgent %}
-                    <tr>
-                        <td>
-                            <a href="{{ url_for('vehicles.view_vehicle', vehicle_id=u.vehicle.id) }}">
-                                {{ u.vehicle.registration_no }}
-                            </a>
-                            <div class="small text-muted">
-                                {{ u.vehicle.factory.name if u.vehicle.factory else (u.vehicle.owner_name_raw or '-') }}
-                            </div>
-                        </td>
-                        <td>{{ u.doc_label }}</td>
-                        <td>{{ u.expiry }}</td>
-                        <td>
-                            {% if u.days is not none and u.days < 0 %}
-                                <span class="text-danger">Expired {{ -u.days }}d ago</span>
-                            {% elif u.days == 0 %}<span class="text-danger">Today</span>
-                            {% else %}<span>{{ u.days }}d</span>{% endif %}
-                        </td>
-                        <td>
-                            <span class="badge
-                                {% if u.status == 'Expired' or u.status == 'Expiring in 7 Days' %}bg-danger
-                                {% else %}bg-warning text-dark{% endif %}">{{ u.status }}</span>
-                        </td>
-                    </tr>
-                    {% else %}
-                    <tr><td colspan="5" class="text-center text-muted py-3">No urgent renewals — all critical documents are current.</td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            {% if urgent %}
-            <div class="card-footer text-end">
-                <a href="{{ url_for('vehicles.list_vehicles', status='Expired') }}" class="btn btn-sm btn-link">See all</a>
-            </div>
-            {% endif %}
-        </div>
+    <div class="col-md-3 col-sm-6">
+        <a href="{{ url_for('vehicles.list_vehicles', status='Expiring in 7 Days') }}" class="text-decoration-none">
+            <div class="stat-card stat-danger"><div class="stat-label">Expiring in 7 days</div><div class="stat-value">{{ expiring_7 }}</div></div>
+        </a>
     </div>
-    <div class="col-md-6">
-        <div class="card h-100">
-            <div class="card-header fw-bold">Monthly document expiries (next 6 months)</div>
-            <div class="card-body">
-                {# Jinja {% set %} inside a for-loop is scope-local, so compute
-                   max via a mutable list + the max filter. #}
-                {% set totals = [] %}
-                {% for m in chart.months %}{% set _ = totals.append(chart.stacks[m].values()|sum) %}{% endfor %}
-                {% set max_total = (totals|max) if totals else 1 %}
-                {% if max_total < 1 %}{% set max_total = 1 %}{% endif %}
+    <div class="col-md-3 col-sm-6">
+        <a href="{{ url_for('vehicles.list_vehicles', status='Expiring in 30 Days') }}" class="text-decoration-none">
+            <div class="stat-card stat-warning"><div class="stat-label">Expiring in 30 days</div><div class="stat-value">{{ expiring_30 }}</div></div>
+        </a>
+    </div>
+    <div class="col-md-3 col-sm-6">
+        <a href="{{ url_for('vehicles.list_vehicles', status='Expiring in 60 Days') }}" class="text-decoration-none">
+            <div class="stat-card"><div class="stat-label">Expiring in 60 days</div><div class="stat-value">{{ expiring_60 }}</div></div>
+        </a>
+    </div>
+    <div class="col-md-3 col-sm-6">
+        <a href="{{ url_for('vehicles.list_vehicles', status='Expiring in 90 Days') }}" class="text-decoration-none">
+            <div class="stat-card"><div class="stat-label">Expiring in 90 days</div><div class="stat-value">{{ expiring_90 }}</div></div>
+        </a>
+    </div>
+</div>
 
-                <svg viewBox="0 0 600 220" xmlns="http://www.w3.org/2000/svg" style="width:100%; height:220px;">
-                    <!-- axis baseline -->
-                    <line x1="40" y1="180" x2="600" y2="180" stroke="#bbb" stroke-width="1"/>
-                    {% set bar_width = 60 %}
-                    {% set gap = (600 - 40 - (chart.months|length * bar_width)) / (chart.months|length + 1) %}
-                    {% set palette = {'tax_token': '#1a3a5f', 'fitness': '#c99a3b', 'route_permit': '#5c8aa7', 'blue_book': '#8a6d3b'} %}
-                    {% for m in chart.months %}
-                        {% set month_total = chart.stacks[m].values()|sum %}
-                        {% set x = 40 + gap + loop.index0 * (bar_width + gap) %}
-                        {% set y_cursor = 180 %}
-                        {% for t in chart.doc_types %}
-                            {% set n = chart.stacks[m][t] %}
-                            {% if n > 0 %}
-                                {% set h = (n / max_total) * 140 %}
-                                {% set y_cursor = y_cursor - h %}
-                                <rect x="{{ x }}" y="{{ y_cursor }}" width="{{ bar_width }}" height="{{ h }}"
-                                      fill="{{ palette[t] }}">
-                                    <title>{{ m }} · {{ chart.labels[t] }}: {{ n }}</title>
-                                </rect>
-                            {% endif %}
-                        {% endfor %}
-                        <text x="{{ x + bar_width/2 }}" y="200" text-anchor="middle" font-size="11" fill="#444">{{ m }}</text>
-                        {% if month_total > 0 %}
-                        <text x="{{ x + bar_width/2 }}" y="{{ 180 - (month_total / max_total) * 140 - 4 }}"
-                              text-anchor="middle" font-size="11" font-weight="bold" fill="#222">{{ month_total }}</text>
-                        {% endif %}
-                    {% endfor %}
-                </svg>
-                <div class="small d-flex gap-3 flex-wrap mt-2">
-                    {% set palette = {'tax_token': '#1a3a5f', 'fitness': '#c99a3b', 'route_permit': '#5c8aa7', 'blue_book': '#8a6d3b'} %}
-                    {% for t in chart.doc_types %}
-                    <span><span style="display:inline-block; width:10px; height:10px; background:{{ palette[t] }}; margin-right:4px;"></span>{{ chart.labels[t] }}</span>
-                    {% endfor %}
-                </div>
-            </div>
-        </div>
+<div class="card mb-3">
+    <div class="card-header fw-bold">Urgent renewals</div>
+    <table class="table table-sm mb-0 align-middle">
+        <thead>
+            <tr><th>Registration</th><th>Document</th><th>Expiry</th><th>Days</th><th>Status</th><th></th></tr>
+        </thead>
+        <tbody>
+            {% for u in urgent %}
+            <tr>
+                <td>
+                    <a href="{{ url_for('vehicles.view_vehicle', vehicle_id=u.vehicle.id) }}">
+                        {{ u.vehicle.registration_no }}
+                    </a>
+                    <div class="small text-muted">
+                        {{ u.vehicle.factory.name if u.vehicle.factory else (u.vehicle.owner_name_raw or '-') }}
+                    </div>
+                </td>
+                <td>{{ u.doc_label }}</td>
+                <td>{{ u.expiry }}</td>
+                <td>
+                    {% if u.days is not none and u.days < 0 %}
+                        <span class="text-danger">Expired {{ -u.days }}d ago</span>
+                    {% elif u.days == 0 %}<span class="text-danger">Today</span>
+                    {% else %}<span>{{ u.days }}d</span>{% endif %}
+                </td>
+                <td>
+                    <span class="badge
+                        {% if u.status == 'Expired' or u.status == 'Expiring in 7 Days' %}bg-danger
+                        {% else %}bg-warning text-dark{% endif %}">{{ u.status }}</span>
+                </td>
+                <td class="text-end">
+                    {% if can_alert %}
+                    <a href="{{ url_for('vehicles.send_doc_alert', vehicle_id=u.vehicle.id, doc_type=u.doc_type) }}"
+                       class="btn btn-sm btn-outline-primary">Send alert</a>
+                    {% endif %}
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="6" class="text-center text-muted py-3">No urgent renewals — all critical documents are current.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% if urgent %}
+    <div class="card-footer text-end">
+        <a href="{{ url_for('vehicles.list_vehicles', status='Expired') }}" class="btn btn-sm btn-link">See all</a>
     </div>
+    {% endif %}
 </div>
 
 <div class="card">
@@ -151,5 +128,8 @@
     </table>
 </div>
 
-<p class="text-muted small mt-3">Totals cover active vehicles only. Statuses recomputed on load against {{ today }}.</p>
+<p class="text-muted small mt-3">
+    Totals cover active vehicles only. Statuses recomputed on load against {{ today }}.
+    The 7, 30, 60, and 90-day cards are mutually exclusive buckets (0-7 / 8-30 / 31-60 / 61-90 days), so a document is counted on exactly one card.
+</p>
 {% endblock %}

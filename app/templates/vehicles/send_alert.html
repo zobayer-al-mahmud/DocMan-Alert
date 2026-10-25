@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Send alert · {{ doc_type_label }}{% endblock %}
+{% block page_title %}Send alert · {{ doc_type_label }} · {{ vehicle.registration_no }}{% endblock %}
+
+{% block content %}
+<a href="{{ url_for('vehicles.view_vehicle', vehicle_id=vehicle.id) }}" class="btn btn-outline-secondary btn-sm mb-3">&larr; Back to vehicle</a>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <h5 class="mb-2">{{ doc_type_label }} · {{ vehicle.registration_no }}</h5>
+        <p class="mb-1"><strong>Factory / Owner:</strong>
+            {% if vehicle.factory %}{{ vehicle.factory.name }}
+            {% elif vehicle.owner_name_raw %}{{ vehicle.owner_name_raw }}
+            {% else %}-{% endif %}
+        </p>
+        <p class="mb-1"><strong>Document number:</strong> {{ doc.doc_number or '-' }}</p>
+        <p class="mb-1"><strong>Expiry:</strong>
+            {% if doc.no_expiry %}<em>No expiry</em>
+            {% elif doc.expiry_date %}{{ doc.expiry_date }}
+            {% else %}-{% endif %}
+        </p>
+        <p class="mb-0"><strong>Status:</strong> {{ doc.status }}</p>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <p class="text-muted">Transport Manager and Transport User accounts (with factory match or Global Access), the vehicle creator, and the Transport department mailbox are listed. Only ticked recipients receive this message.</p>
+
+        {% if allowed_users or allowed_group_emails %}
+        <form method="POST" onsubmit="return confirm('Send this alert to the selected recipients?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="border rounded p-3 mb-3" style="max-height:360px; overflow:auto;">
+                {% if allowed_group_emails %}
+                <div class="mb-2 pb-2 border-bottom">
+                    {% for address in allowed_group_emails %}
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" name="group_email" value="{{ address }}" id="group_{{ loop.index }}" checked>
+                        <label class="form-check-label" for="group_{{ loop.index }}">
+                            <strong>Transport group mailbox</strong> &mdash; {{ address }}
+                        </label>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                {% if allowed_users %}
+                {% for user in allowed_users %}
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" name="recipient_id" value="{{ user.id }}" id="user_{{ user.id }}">
+                    <label class="form-check-label" for="user_{{ user.id }}">
+                        <strong>{{ user.full_name or user.username }}</strong> &mdash; {{ user.email }}<br>
+                        <span class="text-muted">{{ user.role.name }} &middot; {{ user.factory.name if user.factory else "Global Access" }}</span>
+                    </label>
+                </div>
+                {% endfor %}
+                {% else %}
+                <p class="text-muted mb-0">No individual recipients configured.</p>
+                {% endif %}
+            </div>
+            <button class="btn btn-primary" type="submit">Send this alert</button>
+            <a href="{{ url_for('vehicles.view_vehicle', vehicle_id=vehicle.id) }}" class="btn btn-outline-secondary">Cancel</a>
+        </form>
+        {% else %}
+        <p class="text-muted mb-0">No recipients configured for this vehicle. Add a Transport Manager or User with a valid email, or set a Transport department group mailbox under Departments.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
