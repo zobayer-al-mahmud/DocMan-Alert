@@ -67,7 +67,46 @@ def ensure_alert_schema():
 
     _backfill_file_versions()
     _rebuild_regulatory_tables_if_needed()
+    _ensure_vehicle_tables()
     return changed
+
+
+def _ensure_vehicle_tables():
+    """Create vehicle tables and their supporting indexes idempotently.
+
+    create_all() in app factory already creates missing SQLAlchemy-declared
+    tables; this adds the explicit indexes a partial-unique rule or search
+    pattern needs and verifies the active-doc unique index exists even on
+    older SQLite versions that ignored the model-level definition.
+    """
+    from sqlalchemy import inspect
+    inspector = inspect(db.engine)
+    if not inspector.has_table("vehicles"):
+        # The model declaration is the source of truth; create_all picks it up.
+        db.create_all()
+
+    # SQLAlchemy's index=True only creates indexes on first CREATE TABLE.
+    # Re-asserting them on every startup makes the schema self-healing when
+    # tables already exist (matches the pattern used for employees/documents).
+    index_sql = [
+        "CREATE INDEX IF NOT EXISTS ix_vehicles_company_id ON vehicles (company_id)",
+        "CREATE INDEX IF NOT EXISTS ix_vehicles_is_active ON vehicles (is_active)",
+        "CREATE INDEX IF NOT EXISTS ix_vehicle_documents_vehicle_id "
+        "ON vehicle_documents (vehicle_id)",
+        "CREATE INDEX IF NOT EXISTS ix_vehicle_documents_doc_type "
+        "ON vehicle_documents (doc_type)",
+        "CREATE INDEX IF NOT EXISTS ix_vehicle_documents_status "
+        "ON vehicle_documents (status)",
+        "CREATE INDEX IF NOT EXISTS ix_vehicle_doc_versions_doc "
+        "ON vehicle_document_versions (vehicle_document_id)",
+        # Partial unique: at most one active doc per (vehicle, doc_type).
+        # Must be explicit because older SQLite ignores sqlite_where from ORM.
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_vehicle_doc_active "
+        "ON vehicle_documents (vehicle_id, doc_type) WHERE is_active = 1",
+    ]
+    for statement in index_sql:
+        db.session.execute(text(statement))
+    db.session.commit()
 
 
 def _rebuild_regulatory_tables_if_needed():

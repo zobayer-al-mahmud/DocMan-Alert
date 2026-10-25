@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 from flask_login import UserMixin
 from app import db
@@ -481,6 +482,180 @@ class AlertEmailItem(db.Model):
     expiry_date = db.Column(db.Date)
     record_status = db.Column(db.String(40), nullable=False, default="")
     sources = db.Column(db.String(200), nullable=False, default="")
+
+
+# ---------------------------------------------------------------------------
+# Vehicle fleet compliance (Transport Manager scope)
+# A vehicle is an asset of a company (or a personal owner). It carries up to
+# four documents (Tax Token, Fitness, Route Permit, Blue Book) with their own
+# expiry dates and file history. Blank expiry != invalid: Fitness and Route
+# Permit are legitimately optional per vehicle, and the Blue Book cell in the
+# source workbook may hold either an expiry date OR a status note (e.g.
+# "Smart Card received"), so we store both shapes without conflict.
+# ---------------------------------------------------------------------------
+
+VEHICLE_DOC_TYPES = ("tax_token", "fitness", "route_permit", "blue_book")
+VEHICLE_DOC_LABELS = {
+    "tax_token": "Tax Token",
+    "fitness": "Fitness Certificate",
+    "route_permit": "Route Permit",
+    "blue_book": "Blue Book",
+}
+# Required-for-every-vehicle rule: Tax Token is always required. The other
+# three are only "missing" when the vehicle operator says they apply but no
+# expiry is recorded. The Vehicle.applicable_doc_types() helper decides this.
+VEHICLE_DOC_REQUIRED_DEFAULT = ("tax_token",)
+
+
+class Vehicle(db.Model):
+    __tablename__ = "vehicles"
+    __table_args__ = (
+        db.UniqueConstraint("reg_no_normalized", name="ux_vehicle_reg_no_normalized"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    # Raw registration number as entered or imported (e.g. "DM GA-21-1744").
+    registration_no = db.Column(db.String(80), nullable=False)
+    # Uppercased with whitespace, dots and dashes removed. Natural key used for
+    # idempotent import upserts. Written by Vehicle.set_registration().
+    reg_no_normalized = db.Column(db.String(80), nullable=False, index=True)
+    vehicle_type = db.Column(db.String(150))
+    # Optional link to the owning company. NULL for personal-owner vehicles
+    # (the raw owner name is kept in owner_name_raw so nothing is lost).
+    company_id = db.Column(db.Integer, db.ForeignKey("companies.id"), nullable=True, index=True)
+    office_label = db.Column(db.String(100))
+    owner_name_raw = db.Column(db.String(200))
+    is_active = db.Column(db.Boolean, default=True, nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_by = db.Column(db.Integer, db.ForeignKey("users.id"), index=True)
+
+    company = db.relationship("Company", foreign_keys=[company_id])
+    creator = db.relationship("User", foreign_keys=[created_by])
+    documents = db.relationship(
+        "VehicleDocument", backref="vehicle", lazy="selectin",
+        cascade="all, delete-orphan",
+        order_by="VehicleDocument.doc_type",
+    )
+
+    @staticmethod
+    def normalize_reg_no(value):
+        """Collapse spaces, dots and dashes; uppercase. Returns '' for None/empty."""
+        if value is None:
+            return ""
+        return re.sub(r"[\s.\-]+", "", str(value)).upper()
+
+    def set_registration(self, value):
+        self.registration_no = (value or "").strip()
+        self.reg_no_normalized = self.normalize_reg_no(value)
+
+    def applicable_doc_types(self):
+        """Doc types this vehicle actually uses. A doc is 'applicable' when
+        a row exists for it OR when it's in the always-required set."""
+        existing = {d.doc_type for d in self.documents if d.is_active}
+        return set(VEHICLE_DOC_REQUIRED_DEFAULT) | existing
+
+    def missing_required(self):
+        """Required doc types with no active row (used by dashboard counts)."""
+        active = {d.doc_type for d in self.documents if d.is_active}
+        return [t for t in VEHICLE_DOC_REQUIRED_DEFAULT if t not in active]
+
+    def __repr__(self):
+        return f"<Vehicle {self.registration_no}>"
+
+
+class VehicleDocument(db.Model):
+    """One doc per vehicle per doc_type (one active row at a time). File
+    history lives in VehicleDocumentVersion. Status is kept consistent with
+    the project-wide engine in app/utils.compute_status()."""
+    __tablename__ = "vehicle_documents"
+    __table_args__ = (
+        # Allow at most one active document per vehicle per doc_type. SQLite
+        # supports partial unique indexes, so renewals that archive the old
+        # row (is_active=False) remain valid.
+        db.Index(
+            "ux_vehicle_doc_active",
+            "vehicle_id", "doc_type",
+            unique=True,
+            sqlite_where=db.text("is_active = 1"),
+        ),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    vehicle_id = db.Column(db.Integer, db.ForeignKey("vehicles.id"), nullable=False, index=True)
+    # One of VEHICLE_DOC_TYPES. Enforced in forms/import; stored as plain text
+    # for forward compatibility with new doc kinds.
+    doc_type = db.Column(db.String(30), nullable=False, index=True)
+    doc_number = db.Column(db.String(100))
+    issue_date = db.Column(db.Date)
+    expiry_date = db.Column(db.Date, index=True)
+    # True when the Blue Book cell held a status note instead of a date
+    # ("Smart Card received", "Old Format Bluebook", ...). The note goes in
+    # `note`; expiry_date stays NULL and status computes to Valid.
+    no_expiry = db.Column(db.Boolean, default=False, nullable=False)
+    # Free-text status note from the source sheet. Not a replacement for
+    # doc_number; used for Blue Book "Smart Card received" style annotations.
+    note = db.Column(db.Text)
+    status = db.Column(db.String(30), default="Valid", index=True)
+    renewal_status = db.Column(db.String(50), default="Not Started")
+    is_active = db.Column(db.Boolean, default=True, nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_by = db.Column(db.Integer, db.ForeignKey("users.id"), index=True)
+
+    creator = db.relationship("User", foreign_keys=[created_by])
+    file_versions = db.relationship(
+        "VehicleDocumentVersion", backref="document", lazy=True,
+        order_by="VehicleDocumentVersion.version_no",
+        cascade="all, delete-orphan",
+    )
+
+    def __repr__(self):
+        return f"<VehicleDocument vehicle={self.vehicle_id} {self.doc_type}>"
+
+
+class VehicleDocumentVersion(db.Model):
+    """One row per uploaded file for a vehicle document (renewal history)."""
+    __tablename__ = "vehicle_document_versions"
+    __table_args__ = (
+        db.UniqueConstraint(
+            "vehicle_document_id", "version_no",
+            name="ux_vehicle_document_version",
+        ),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    vehicle_document_id = db.Column(
+        db.Integer, db.ForeignKey("vehicle_documents.id"),
+        nullable=False, index=True,
+    )
+    version_no = db.Column(db.Integer, nullable=False, default=1)
+    file_path = db.Column(db.String(400), nullable=False)
+    issue_date = db.Column(db.Date)
+    expiry_date = db.Column(db.Date)
+    note = db.Column(db.String(300))
+    uploaded_by = db.Column(db.Integer, db.ForeignKey("users.id"))
+    uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class VehicleImportRun(db.Model):
+    """Audit row for one Excel import. Created even when the import fails
+    so operators can trace what happened."""
+    __tablename__ = "vehicle_import_runs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    filename = db.Column(db.String(300), nullable=False, default="")
+    imported_by = db.Column(db.Integer, db.ForeignKey("users.id"), index=True)
+    started_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    finished_at = db.Column(db.DateTime)
+    status = db.Column(db.String(20), default="pending", index=True)  # pending / success / failed
+    total_rows = db.Column(db.Integer, default=0)
+    new_vehicles = db.Column(db.Integer, default=0)
+    updated_vehicles = db.Column(db.Integer, default=0)
+    new_docs = db.Column(db.Integer, default=0)
+    updated_docs = db.Column(db.Integer, default=0)
+    skipped_rows = db.Column(db.Integer, default=0)
+    error_detail = db.Column(db.String(400))
+
+    importer = db.relationship("User", foreign_keys=[imported_by])
 
 
 class OcrResult(db.Model):

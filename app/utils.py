@@ -10,7 +10,7 @@ from flask_mail import Message
 from app import db, mail
 from app.models import (
     AlertDispatch, Document, Employee, EmployeeCompliance, HealthCheckup, SystemLog,
-    User, company_alert_recipients, department_alert_recipients,
+    User, VehicleDocument, company_alert_recipients, department_alert_recipients,
     AlertEmail, AlertEmailItem,
 )
 
@@ -308,9 +308,10 @@ def _recalc_model(model):
 
 
 def recalculate_all_statuses():
-    """Recompute statuses for documents, employee licenses, and health checkups."""
+    """Recompute statuses for documents, employee licenses, health checkups,
+    and vehicle documents."""
     changed = False
-    for model in (Document, EmployeeCompliance, HealthCheckup):
+    for model in (Document, EmployeeCompliance, HealthCheckup, VehicleDocument):
         if _recalc_model(model):
             changed = True
     if changed:

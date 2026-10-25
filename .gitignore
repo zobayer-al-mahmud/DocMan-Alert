@@ -61,4 +61,7 @@ tessdata/
 # --- Private QA notes with historical admin password references ---
 QA_TEST_REPORT.md
 
+# --- Session handoff notes (contain infra passwords) ---
+MEMORY.md
+
 # --- Nothing else here; everything intentional stays tracked ---
