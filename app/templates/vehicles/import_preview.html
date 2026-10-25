@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Vehicle Import Preview{% endblock %}
+{% block page_title %}Vehicle Import Preview{% endblock %}
+
+{% block content %}
+<a href="{{ url_for('vehicles.import_vehicles') }}" class="btn btn-outline-secondary btn-sm mb-3">&larr; Start Over</a>
+
+<div class="row g-3 mb-3">
+    <div class="col"><div class="stat-card"><div class="stat-label">Total Rows</div><div class="stat-value">{{ counts.total }}</div></div></div>
+    <div class="col"><div class="stat-card stat-success"><div class="stat-label">New</div><div class="stat-value">{{ counts.new }}</div></div></div>
+    <div class="col"><div class="stat-card"><div class="stat-label">Update</div><div class="stat-value">{{ counts.updated }}</div></div></div>
+    <div class="col"><div class="stat-card"><div class="stat-label">No Change</div><div class="stat-value">{{ counts.no_change }}</div></div></div>
+    <div class="col"><div class="stat-card stat-danger"><div class="stat-label">Skip (errors)</div><div class="stat-value">{{ counts.skip }}</div></div></div>
+</div>
+
+{% if errors %}
+<div class="alert alert-danger">
+    <strong>Workbook problems:</strong>
+    <ul class="mb-0 mt-2">{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+{% set bad = [] %}
+{% for r in rows %}{% if r.row_errors %}{% set _ = bad.append(r) %}{% endif %}{% endfor %}
+{% if bad %}
+<div class="alert alert-warning">
+    <strong>{{ bad|length }} row(s) will be skipped due to errors.</strong>
+    <ul class="mb-0 mt-2">
+        {% for r in bad[:40] %}
+        <li>Row {{ r.row_no }} ({{ r.registration_no or '-' }}): {{ r.row_errors|join('; ') }}</li>
+        {% endfor %}
+        {% if bad|length > 40 %}<li>... and {{ bad|length - 40 }} more.</li>{% endif %}
+    </ul>
+</div>
+{% endif %}
+
+<div class="card mb-3">
+<table class="table table-sm mb-0">
+    <thead>
+        <tr>
+            <th>#</th>
+            <th>Action</th>
+            <th>Registration</th>
+            <th>Owner</th>
+            <th>Office</th>
+            <th>Vehicle Type</th>
+            <th>Tax Token</th>
+            <th>Fitness</th>
+            <th>Route Permit</th>
+            <th>Blue Book</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for r in preview_rows %}
+        <tr>
+            <td>{{ r.row_no }}</td>
+            <td>
+                {% if r.action == 'new' %}<span class="badge bg-success">New</span>
+                {% elif r.action == 'update' %}<span class="badge bg-primary">Update</span>
+                {% elif r.action == 'no_change' %}<span class="badge bg-secondary">No change</span>
+                {% else %}<span class="badge bg-danger">Skip</span>{% endif %}
+            </td>
+            <td>{{ r.registration_no }}</td>
+            <td>{{ r.owner_display }}</td>
+            <td>{{ r.office_label or '-' }}</td>
+            <td>{{ r.vehicle_type or '-' }}</td>
+            <td>{{ r.tax_token_expiry or '-' }}</td>
+            <td>{{ r.fitness_expiry or '-' }}</td>
+            <td>{{ r.route_permit_expiry or '-' }}</td>
+            <td>
+                {% if r.blue_book_expiry %}{{ r.blue_book_expiry }}
+                {% elif r.blue_book_note %}<em>{{ r.blue_book_note }}</em>
+                {% else %}-{% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+{% if rows|length > preview_rows|length %}
+<p class="text-muted small">Showing first {{ preview_rows|length }} of {{ rows|length }} rows.</p>
+{% endif %}
+
+{% if counts.new or counts.updated %}
+<form method="POST" action="{{ url_for('vehicles.import_confirm') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="token" value="{{ token }}">
+    <input type="hidden" name="filename" value="{{ filename }}">
+    <button type="submit" class="btn btn-primary"
+            onclick="return confirm('Apply {{ counts.new }} new and {{ counts.updated }} updated row(s)? This cannot be undone.');">
+        Confirm Import
+    </button>
+    <a href="{{ url_for('vehicles.import_vehicles') }}" class="btn btn-outline-secondary">Cancel</a>
+</form>
+{% else %}
+<div class="alert alert-info">Nothing to import — every valid row already matches the current database.</div>
+<a href="{{ url_for('vehicles.import_vehicles') }}" class="btn btn-outline-secondary">Done</a>
+{% endif %}
+{% endblock %}

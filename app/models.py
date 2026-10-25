@@ -520,8 +520,13 @@ class Vehicle(db.Model):
     # idempotent import upserts. Written by Vehicle.set_registration().
     reg_no_normalized = db.Column(db.String(80), nullable=False, index=True)
     vehicle_type = db.Column(db.String(150))
-    # Optional link to the owning company. NULL for personal-owner vehicles
-    # (the raw owner name is kept in owner_name_raw so nothing is lost).
+    # Owning factory (e.g. Ananta Garments Ltd., ABM Fashions Ltd.). This is
+    # the primary scope link used by RBAC and dashboards. NULL for personal
+    # or unmapped owners, in which case owner_name_raw carries the name.
+    factory_id = db.Column(db.Integer, db.ForeignKey("factories.id"), nullable=True, index=True)
+    # Denormalized from factory.company_id when factory_id is set. Kept so
+    # Vehicle rows without a factory (personal owners) can still be grouped
+    # by a chosen company.
     company_id = db.Column(db.Integer, db.ForeignKey("companies.id"), nullable=True, index=True)
     office_label = db.Column(db.String(100))
     owner_name_raw = db.Column(db.String(200))
@@ -529,6 +534,7 @@ class Vehicle(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     created_by = db.Column(db.Integer, db.ForeignKey("users.id"), index=True)
 
+    factory = db.relationship("Factory", foreign_keys=[factory_id])
     company = db.relationship("Company", foreign_keys=[company_id])
     creator = db.relationship("User", foreign_keys=[created_by])
     documents = db.relationship(

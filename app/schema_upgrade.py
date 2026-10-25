@@ -85,10 +85,16 @@ def _ensure_vehicle_tables():
         # The model declaration is the source of truth; create_all picks it up.
         db.create_all()
 
+    # factory_id was introduced after the first vehicle schema; add it when
+    # upgrading an older local DB. New installs already have it from create_all.
+    if _add_column("vehicles", "factory_id", "INTEGER"):
+        db.session.commit()
+
     # SQLAlchemy's index=True only creates indexes on first CREATE TABLE.
     # Re-asserting them on every startup makes the schema self-healing when
     # tables already exist (matches the pattern used for employees/documents).
     index_sql = [
+        "CREATE INDEX IF NOT EXISTS ix_vehicles_factory_id ON vehicles (factory_id)",
         "CREATE INDEX IF NOT EXISTS ix_vehicles_company_id ON vehicles (company_id)",
         "CREATE INDEX IF NOT EXISTS ix_vehicles_is_active ON vehicles (is_active)",
         "CREATE INDEX IF NOT EXISTS ix_vehicle_documents_vehicle_id "
