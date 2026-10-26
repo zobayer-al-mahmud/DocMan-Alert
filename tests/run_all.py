@@ -11,6 +11,7 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
 TESTS = [
     "test_status_engine.py",
     "test_routes_smoke.py",
@@ -35,6 +36,17 @@ TESTS = [
 def main():
     env = dict(os.environ)
     env.setdefault("SECRET_KEY", "test-key")
+
+    # Isolate the ENTIRE suite from the live database. Every test script calls
+    # create_app(), which binds to instance/compliance.db unless DATABASE_URL
+    # says otherwise. We point it at one disposable copy of production so the
+    # suite exercises real seed data but can never mutate the real file. This
+    # is the systemic guard against the 112->6 vehicle-wipe incident.
+    from _isolated_db import use_isolated_db
+    test_db = use_isolated_db()
+    env["DATABASE_URL"] = os.environ["DATABASE_URL"]
+    print(f"[run_all] isolated test database: {test_db}")
+
     failed = []
     for t in TESTS:
         print(f"\n########## {t} ##########")

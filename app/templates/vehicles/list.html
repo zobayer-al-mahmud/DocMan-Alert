@@ -22,6 +22,7 @@
 </div>
 
 <form method="GET" class="card card-body mb-3 py-2">
+    {% if urgent_only %}<input type="hidden" name="urgent" value="1">{% endif %}
     <div class="row g-2">
         <div class="col-md-3">
             <input type="text" name="search" value="{{ selected_search }}" class="form-control form-control-sm" placeholder="Registration / type / owner">
@@ -69,13 +70,18 @@
                        class="form-check-input" onchange="this.form.submit()"> Missing required document (Tax Token)
             </label>
         </div>
+        {% if urgent_only %}
+        <div class="col-auto">
+            <span class="badge-status badge-expired">Urgent only (Expired / ≤30 days)</span>
+        </div>
+        {% endif %}
         <div class="col-auto">
             <a href="{{ url_for('vehicles.list_vehicles') }}" class="btn btn-sm btn-link">Clear filters</a>
         </div>
     </div>
 </form>
 
-<div class="card">
+<div class="card vehicle-list-card">
 <table class="table table-sm mb-0 align-middle">
     <thead>
         <tr>
@@ -87,7 +93,7 @@
             <th>Fitness</th>
             <th>Route Permit</th>
             <th>Blue Book</th>
-            <th></th>
+            <th class="text-end" style="min-width:110px;">Actions</th>
         </tr>
     </thead>
     <tbody>
@@ -125,7 +131,98 @@
             </td>
             {% endfor %}
             <td class="text-end">
-                <a href="{{ url_for('vehicles.view_vehicle', vehicle_id=v.id) }}" class="btn btn-sm btn-outline-primary">View</a>
+                <div class="dropdown">
+                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle"
+                            type="button"
+                            id="actions-{{ v.id }}"
+                            data-bs-toggle="dropdown"
+                            data-bs-boundary="viewport"
+                            data-bs-strategy="fixed"
+                            aria-expanded="false"
+                            aria-label="Actions for {{ v.registration_no }}">
+                        Actions
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end shadow-sm" aria-labelledby="actions-{{ v.id }}">
+                        <li>
+                            <a class="dropdown-item" href="{{ url_for('vehicles.view_vehicle', vehicle_id=v.id) }}">
+                                View details
+                            </a>
+                        </li>
+                        {% if can_manage %}
+                        <li>
+                            <a class="dropdown-item" href="{{ url_for('vehicles.edit_vehicle', vehicle_id=v.id) }}">
+                                Edit vehicle
+                            </a>
+                        </li>
+                        {% endif %}
+                        {% if can_delete %}
+                        <li>
+                            <form method="POST"
+                                  action="{{ url_for('vehicles.archive_vehicle', vehicle_id=v.id) }}"
+                                  onsubmit="return confirm('{% if show_archived %}Restore vehicle {{ v.registration_no|e }}?{% else %}Archive vehicle {{ v.registration_no|e }}?{% endif %}');"
+                                  class="m-0">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="dropdown-item {% if not show_archived %}text-danger{% endif %}">
+                                    {% if show_archived %}Restore vehicle{% else %}Archive vehicle{% endif %}
+                                </button>
+                            </form>
+                        </li>
+                        {% endif %}
+                        {% for t in ['tax_token', 'fitness', 'route_permit', 'blue_book'] %}
+                        {% set d = by_type.get(t) %}
+                        <li><hr class="dropdown-divider"></li>
+                        <li><h6 class="dropdown-header">{{ doc_type_labels[t] }}</h6></li>
+                        {% if d %}
+                            {% set latest_file = d.file_versions|sort(attribute='version_no', reverse=True)|first if d.file_versions else None %}
+                            {% if latest_file %}
+                            <li>
+                                <a class="dropdown-item"
+                                   href="{{ url_for('vehicles.download_file', relative_path=latest_file.file_path) }}"
+                                   target="_blank" rel="noopener">
+                                    Download (v{{ latest_file.version_no }})
+                                </a>
+                            </li>
+                            {% endif %}
+                            {% if can_manage %}
+                            <li>
+                                <a class="dropdown-item"
+                                   href="{{ url_for('vehicles.edit_document', vehicle_id=v.id, doc_type=t) }}">
+                                    Edit
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item"
+                                   href="{{ url_for('vehicles.renew_document', vehicle_id=v.id, doc_type=t) }}">
+                                    Renew
+                                </a>
+                            </li>
+                            {% endif %}
+                            {% if can_alert %}
+                            <li>
+                                <a class="dropdown-item"
+                                   href="{{ url_for('vehicles.send_doc_alert', vehicle_id=v.id, doc_type=t) }}">
+                                    Send Email Alert
+                                </a>
+                            </li>
+                            {% endif %}
+                            {% if not latest_file and not can_manage and not can_alert %}
+                            <li><span class="dropdown-item-text small text-muted">No file on record.</span></li>
+                            {% endif %}
+                        {% else %}
+                            {% if can_manage %}
+                            <li>
+                                <a class="dropdown-item"
+                                   href="{{ url_for('vehicles.edit_document', vehicle_id=v.id, doc_type=t) }}">
+                                    Add {{ doc_type_labels[t] }}
+                                </a>
+                            </li>
+                            {% else %}
+                            <li><span class="dropdown-item-text small text-muted">Not recorded.</span></li>
+                            {% endif %}
+                        {% endif %}
+                        {% endfor %}
+                    </ul>
+                </div>
             </td>
         </tr>
         {% else %}
@@ -141,7 +238,7 @@
         {% for p in pagination.iter_pages() %}
             {% if p %}
                 <li class="page-item {% if p == pagination.page %}active{% endif %}">
-                    <a class="page-link" href="{{ url_for('vehicles.list_vehicles', page=p, search=selected_search, factory_id=selected_factory_id, office=selected_office, doc_type=selected_doc_type, status=selected_status, missing=('1' if missing_only else None), archived=('1' if show_archived else None)) }}">{{ p }}</a>
+                    <a class="page-link" href="{{ url_for('vehicles.list_vehicles', page=p, search=selected_search, factory_id=selected_factory_id, office=selected_office, doc_type=selected_doc_type, status=selected_status, missing=('1' if missing_only else None), urgent=('1' if urgent_only else None), archived=('1' if show_archived else None)) }}">{{ p }}</a>
                 </li>
             {% else %}
                 <li class="page-item disabled"><span class="page-link">…</span></li>
@@ -152,4 +249,29 @@
 {% endif %}
 
 <p class="text-muted small mt-2">Showing {{ pagination.items|length }} of {{ pagination.total }} vehicles.</p>
+
+<script>
+    // Re-initialize vehicle-row dropdowns with a fixed-position Popper
+    // strategy and viewport boundary, so the Actions menu is never clipped
+    // by the table card and flips above the button near the page bottom.
+    document.addEventListener('DOMContentLoaded', function () {
+        if (typeof bootstrap === 'undefined') return;
+        document.querySelectorAll('.vehicle-list-card .dropdown-toggle').forEach(function (btn) {
+            var existing = bootstrap.Dropdown.getInstance(btn);
+            if (existing) existing.dispose();
+            new bootstrap.Dropdown(btn, {
+                popperConfig: function (defaultConfig) {
+                    return Object.assign({}, defaultConfig, {
+                        strategy: 'fixed',
+                        placement: 'bottom-end',
+                        modifiers: [].concat(defaultConfig.modifiers || [], [
+                            { name: 'flip', options: { fallbackPlacements: ['top-end', 'top-start', 'bottom-start'] } },
+                            { name: 'preventOverflow', options: { boundary: 'viewport', altAxis: true, padding: 8 } },
+                        ]),
+                    });
+                },
+            });
+        });
+    });
+</script>
 {% endblock %}

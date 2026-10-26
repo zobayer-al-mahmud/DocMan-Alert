@@ -127,6 +127,11 @@ def test_status_engine_bucket_boundaries():
 
 
 def _reset_vehicle_data(app):
+    # Defense in depth: this routine DELETEs every vehicle row. Refuse outright
+    # if the app is somehow still bound to the production database. This is the
+    # exact operation that wiped the live fleet in October 2026.
+    from _isolated_db import assert_isolated
+    assert_isolated(app)
     with app.app_context():
         for t in ("vehicle_document_versions", "vehicle_documents",
                   "vehicles", "vehicle_import_runs"):
@@ -570,8 +575,60 @@ def test_download_file_path_escape(app):
     check(r.status_code == 404, f"../ traversal = 404 (got {r.status_code})")
 
 
+def test_isolation_and_persistence(app, fixture_path):
+    """Regression guard for the 112->6 incident.
+
+    The app under test must NOT be the production database, and imported
+    vehicles must survive a dashboard reload, a filtered list view, and a
+    subsequent (idempotent) re-import.
+    """
+    print("\n--- isolation + persistence regression ---")
+    from _isolated_db import assert_isolated, production_db_path
+    from app.vehicle_import import parse_workbook, annotate_existing, apply_import
+
+    assert_isolated(app)  # raises if bound to production
+    uri_path = app.config["SQLALCHEMY_DATABASE_URI"].replace("sqlite:///", "")
+    check(os.path.abspath(uri_path) != production_db_path(),
+          "app under test is isolated from the production database")
+
+    _reset_vehicle_data(app)
+    with app.app_context():
+        rows, _ = parse_workbook(fixture_path)
+        annotate_existing(rows)
+        apply_import(rows, user_id=1)
+        n_import = Vehicle.query.count()
+    check(n_import == 6, f"6 vehicles after import (got {n_import})")
+
+    app.config["WTF_CSRF_ENABLED"] = False
+    client = app.test_client()
+    with app.app_context():
+        u = User.query.filter_by(username="admin").first()
+        u.set_password("Ananta@2026")
+        u.failed_login_attempts = 0
+        u.locked_until = None
+        db.session.commit()
+    client.post("/login", data={"username": "admin", "password": "Ananta@2026"})
+    client.get("/vehicles/dashboard")          # refresh recomputes statuses
+    client.get("/vehicles/?status=Expired")    # filtering
+    client.get("/vehicles/?urgent=1")          # urgent "See all"
+    with app.app_context():
+        n_views = Vehicle.query.count()
+    check(n_views == n_import, f"vehicles survive refresh + filtering ({n_views})")
+
+    with app.app_context():
+        rows2, _ = parse_workbook(fixture_path)
+        annotate_existing(rows2)
+        summary = apply_import(rows2, user_id=1)
+        n_reimport = Vehicle.query.count()
+    check(n_reimport == n_import, f"re-import keeps the same count ({n_reimport})")
+    check(summary["new_vehicles"] == 0, "re-import creates no new vehicles")
+
+
 def main():
+    from _isolated_db import use_isolated_db, assert_isolated
+    use_isolated_db()
     app = create_app()
+    assert_isolated(app)
     tmp = tempfile.mkdtemp(prefix="veh_fixture_")
     fixture_path = os.path.join(tmp, "vehicles.xlsx")
     today = date.today()
@@ -579,6 +636,7 @@ def main():
 
     test_normalization()
     test_status_engine_bucket_boundaries()
+    test_isolation_and_persistence(app, fixture_path)
     test_import_pipeline(app, fixture_path)
     test_blank_date_does_not_clear(app, fixture_path)
     test_routes_rbac(app)

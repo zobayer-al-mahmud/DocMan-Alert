@@ -30,13 +30,27 @@ from app.utils import (
 
 vehicles_bp = Blueprint("vehicles", __name__, url_prefix="/vehicles")
 
-# Who may do what. Vehicle Documents are a Transport-oriented module, so
-# Compliance roles are intentionally excluded here (they still see factory
-# certificates through the Documents module).
-VIEW_ROLES = ("Super Admin", "Administration", "Transport Manager", "Transport User")
+# Who may do what. Vehicle Documents are a Transport-oriented module; the
+# Transport roles own the data lifecycle. Factory Admin and Compliance
+# Manager get read-only visibility so they can send manual email alerts
+# (see ALERT_ROLES below).
+VIEW_ROLES = (
+    "Super Admin", "Administration", "Transport Manager", "Transport User",
+    "Factory Admin", "Compliance Manager",
+)
 MANAGE_ROLES = ("Super Admin", "Administration", "Transport Manager", "Transport User")
 DELETE_ROLES = ("Super Admin", "Administration", "Transport Manager")
 IMPORT_ROLES = ("Super Admin", "Administration", "Transport Manager")
+# Manual email alert roles. Transport User is deliberately excluded here
+# (they view the fleet but cannot send alerts); Factory Admin and Compliance
+# Manager are allowed per Transport policy.
+ALERT_ROLES = (
+    "Super Admin", "Administration",
+    "Factory Admin", "Compliance Manager", "Transport Manager",
+)
+# Documents treated as "urgent" on the dashboard Urgent Renewals panel and by
+# the list page's `urgent=1` "See all" filter. Defined once so both agree.
+URGENT_STATUSES = (STATUS_EXPIRED, "Expiring in 7 Days", "Expiring in 30 Days")
 
 
 # --- Scope helpers ----------------------------------------------------------
@@ -146,6 +160,13 @@ def _apply_filters(query):
             VehicleDocument.is_active.is_(True),
         )
         query = query.filter(~Vehicle.id.in_(subq))
+    if request.args.get("urgent") == "1":
+        # "See all" from the dashboard Urgent Renewals panel: vehicles with any
+        # active document that is Expired or due within 30 days.
+        query = query.filter(Vehicle.documents.any(
+            db.and_(VehicleDocument.is_active.is_(True),
+                    VehicleDocument.status.in_(URGENT_STATUSES))
+        ))
     return query
 
 
@@ -185,10 +206,12 @@ def list_vehicles():
         selected_doc_type=request.args.get("doc_type", ""),
         selected_status=request.args.get("status", ""),
         missing_only=request.args.get("missing") == "1",
+        urgent_only=request.args.get("urgent") == "1",
         show_archived=show_archived,
         can_manage=current_user.role.name in MANAGE_ROLES,
         can_delete=current_user.role.name in DELETE_ROLES,
         can_import=current_user.role.name in IMPORT_ROLES,
+        can_alert=current_user.role.name in ALERT_ROLES,
         today=bst_today(),
     )
 
@@ -222,6 +245,7 @@ def view_vehicle(vehicle_id):
         doc_type_labels=VEHICLE_DOC_LABELS,
         can_manage=current_user.role.name in MANAGE_ROLES,
         can_delete=current_user.role.name in DELETE_ROLES,
+        can_alert=current_user.role.name in ALERT_ROLES,
         today=bst_today(),
     )
 
@@ -475,17 +499,23 @@ def dashboard():
     missing_required = total_vehicles - len(has_tax_token)
 
     # --- Urgent renewals (Expired, 7d, 30d), sorted by expiry ---
-    critical_statuses = [STATUS_EXPIRED, "Expiring in 7 Days", "Expiring in 30 Days"]
-    urgent_rows = (
+    # Expiry ascending puts the most overdue first, then the nearest upcoming
+    # dates. We show up to 15 rows in a scrollable panel; "See all" on the
+    # dashboard links to the list filtered by urgent=1 for the full set.
+    critical_statuses = list(URGENT_STATUSES)
+    urgent_base = (
         db.session.query(VehicleDocument, Vehicle)
         .join(Vehicle, VehicleDocument.vehicle_id == Vehicle.id)
-        .options(joinedload(Vehicle.factory))
         .filter(Vehicle.is_active.is_(True),
                 VehicleDocument.is_active.is_(True),
                 VehicleDocument.status.in_(critical_statuses),
                 VehicleDocument.expiry_date.isnot(None))
+    )
+    urgent_total = urgent_base.count()
+    urgent_rows = (
+        urgent_base.options(joinedload(Vehicle.factory))
         .order_by(VehicleDocument.expiry_date.asc())
-        .limit(10).all()
+        .limit(15).all()
     )
     urgent = []
     for doc, veh in urgent_rows:
@@ -514,8 +544,13 @@ def dashboard():
     )
     breakdown = {}
     for factory_id, name, status, count in breakdown_rows:
-        label = name or "— Unmapped / Personal —"
-        row = breakdown.setdefault(label, {"total": 0, "valid": 0, "attention": 0, "expired": 0})
+        # Key by factory_id so each owner row can link to its filtered list.
+        # None key = unmapped / personal owners (no factory to filter on).
+        row = breakdown.setdefault(factory_id, {
+            "name": name or "— Unmapped / Personal —",
+            "factory_id": factory_id,
+            "total": 0, "valid": 0, "attention": 0, "expired": 0,
+        })
         row["total"] += count
         if status == STATUS_EXPIRED:
             row["expired"] += count
@@ -523,10 +558,7 @@ def dashboard():
             row["attention"] += count
         else:
             row["valid"] += count
-    breakdown_list = sorted(
-        [{"name": k, **v} for k, v in breakdown.items()],
-        key=lambda r: -r["total"],
-    )
+    breakdown_list = sorted(breakdown.values(), key=lambda r: -r["total"])
 
     return render_template(
         "vehicles/dashboard.html",
@@ -540,9 +572,10 @@ def dashboard():
         expiring_90=expiring_90,
         missing_required=missing_required,
         urgent=urgent,
+        urgent_total=urgent_total,
         breakdown=breakdown_list,
         today=today,
-        can_alert=current_user.role.name in MANAGE_ROLES,
+        can_alert=current_user.role.name in ALERT_ROLES,
     )
 
 
@@ -550,7 +583,7 @@ def dashboard():
 
 @vehicles_bp.route("/<int:vehicle_id>/docs/<doc_type>/send-alert", methods=["GET", "POST"])
 @login_required
-@roles_required(*MANAGE_ROLES)
+@roles_required(*ALERT_ROLES)
 def send_doc_alert(vehicle_id, doc_type):
     if doc_type not in VEHICLE_DOC_TYPES:
         abort(404)

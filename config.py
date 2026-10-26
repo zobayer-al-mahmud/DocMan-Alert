@@ -40,7 +40,16 @@ class Config:
     SECRET_KEY = _require_env("SECRET_KEY")
 
     # --- Database -----------------------------------------------------------
-    SQLALCHEMY_DATABASE_URI = "sqlite:///" + os.path.join(BASE_DIR, "instance", "compliance.db")
+    # DATABASE_URL lets the test suite (and any throwaway tooling) point the app
+    # at an isolated database instead of the live file. Tests MUST set it: the
+    # October 2026 incident where the fleet collapsed from 112 to 6 vehicles was
+    # caused by tests/test_vehicles.py running its DELETE-and-reseed routine
+    # against this production DB. Production itself never sets DATABASE_URL, so
+    # the default below is unchanged for the real app.
+    SQLALCHEMY_DATABASE_URI = (
+        os.environ.get("DATABASE_URL")
+        or "sqlite:///" + os.path.join(BASE_DIR, "instance", "compliance.db")
+    )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     # --- File storage -------------------------------------------------------

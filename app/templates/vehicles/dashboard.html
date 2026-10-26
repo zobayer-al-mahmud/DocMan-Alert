@@ -57,76 +57,129 @@
     </div>
 </div>
 
-<div class="card mb-3">
-    <div class="card-header fw-bold">Urgent renewals</div>
-    <table class="table table-sm mb-0 align-middle">
-        <thead>
-            <tr><th>Registration</th><th>Document</th><th>Expiry</th><th>Days</th><th>Status</th><th></th></tr>
-        </thead>
-        <tbody>
-            {% for u in urgent %}
-            <tr>
-                <td>
-                    <a href="{{ url_for('vehicles.view_vehicle', vehicle_id=u.vehicle.id) }}">
-                        {{ u.vehicle.registration_no }}
-                    </a>
-                    <div class="small text-muted">
-                        {{ u.vehicle.factory.name if u.vehicle.factory else (u.vehicle.owner_name_raw or '-') }}
-                    </div>
-                </td>
-                <td>{{ u.doc_label }}</td>
-                <td>{{ u.expiry }}</td>
-                <td>
-                    {% if u.days is not none and u.days < 0 %}
-                        <span class="text-danger">Expired {{ -u.days }}d ago</span>
-                    {% elif u.days == 0 %}<span class="text-danger">Today</span>
-                    {% else %}<span>{{ u.days }}d</span>{% endif %}
-                </td>
-                <td>
-                    <span class="badge
-                        {% if u.status == 'Expired' or u.status == 'Expiring in 7 Days' %}bg-danger
-                        {% else %}bg-warning text-dark{% endif %}">{{ u.status }}</span>
-                </td>
-                <td class="text-end">
-                    {% if can_alert %}
-                    <a href="{{ url_for('vehicles.send_doc_alert', vehicle_id=u.vehicle.id, doc_type=u.doc_type) }}"
-                       class="btn btn-sm btn-outline-primary">Send alert</a>
-                    {% endif %}
-                </td>
-            </tr>
-            {% else %}
-            <tr><td colspan="6" class="text-center text-muted py-3">No urgent renewals — all critical documents are current.</td></tr>
-            {% endfor %}
-        </tbody>
-    </table>
-    {% if urgent %}
-    <div class="card-footer text-end">
-        <a href="{{ url_for('vehicles.list_vehicles', status='Expired') }}" class="btn btn-sm btn-link">See all</a>
+{% set urgency_badge = {
+    'Expired': 'badge-expired',
+    'Expiring in 7 Days': 'badge-expiring-7',
+    'Expiring in 30 Days': 'badge-expiring-30',
+    'Expiring in 60 Days': 'badge-expiring-60',
+    'Expiring in 90 Days': 'badge-expiring-90',
+} %}
+<div class="row g-3 transport-split">
+    <div class="col-lg-6">
+        <div class="card h-100">
+            <div class="card-header fw-bold d-flex justify-content-between align-items-center">
+                <span>Urgent renewals{% if urgent_total %} <span class="text-muted fw-normal">({{ urgent_total }})</span>{% endif %}</span>
+                {% if urgent_total > urgent|length %}
+                <a href="{{ url_for('vehicles.list_vehicles', urgent=1) }}" class="btn btn-sm btn-link p-0">See all {{ urgent_total }}</a>
+                {% elif urgent %}
+                <a href="{{ url_for('vehicles.list_vehicles', urgent=1) }}" class="btn btn-sm btn-link p-0">See all</a>
+                {% endif %}
+            </div>
+            <div class="card-body-scroll p-0">
+                <table class="table table-sm mb-0 align-middle">
+                    <thead>
+                        <tr>
+                            <th>Registration</th>
+                            <th>Document</th>
+                            <th>Urgency</th>
+                            <th>Expiry</th>
+                            <th class="text-end">Days</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for u in urgent %}
+                        <tr>
+                            <td>
+                                <a href="{{ url_for('vehicles.view_vehicle', vehicle_id=u.vehicle.id) }}" class="fw-semibold text-decoration-none">
+                                    {{ u.vehicle.registration_no }}
+                                </a>
+                                {% set owner = u.vehicle.factory.name if u.vehicle.factory else u.vehicle.owner_name_raw %}
+                                {% if owner %}
+                                <div class="small text-muted text-truncate" style="max-width: 180px;" title="{{ owner }}">{{ owner }}</div>
+                                {% endif %}
+                            </td>
+                            <td class="small">{{ u.doc_label }}</td>
+                            <td><span class="badge-status {{ urgency_badge.get(u.status, 'badge-valid') }}">{{ u.status }}</span></td>
+                            <td class="small">{{ u.expiry }}</td>
+                            <td class="text-end small">
+                                {% if u.days is not none and u.days < 0 %}
+                                    <span class="text-danger fw-semibold">{{ -u.days }}d ago</span>
+                                {% elif u.days == 0 %}
+                                    <span class="text-danger fw-semibold">Today</span>
+                                {% elif u.days is not none and u.days <= 7 %}
+                                    <span class="text-danger fw-semibold">{{ u.days }}d</span>
+                                {% else %}
+                                    <span class="text-warning fw-semibold">{{ u.days }}d</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="5" class="text-center text-muted py-3">No urgent renewals — all critical documents are current.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </div>
-    {% endif %}
+
+    <div class="col-lg-6">
+        <div class="card h-100">
+            <div class="card-header fw-bold d-flex justify-content-between align-items-center">
+                <span>Owner / factory breakdown</span>
+                {% if breakdown %}<span class="text-muted small fw-normal">{{ breakdown|length }} owner(s)</span>{% endif %}
+            </div>
+            <div class="card-body-scroll p-0">
+                <table class="table table-sm mb-0 align-middle">
+                    <thead>
+                        <tr>
+                            <th>Owner</th>
+                            <th class="text-end">Total</th>
+                            <th class="text-end">Valid</th>
+                            <th class="text-end">Attention</th>
+                            <th class="text-end">Expired</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in breakdown %}
+                        <tr{% if row.factory_id %} class="owner-row" role="link" tabindex="0"
+                            data-href="{{ url_for('vehicles.list_vehicles', factory_id=row.factory_id) }}"{% endif %}>
+                            <td class="small">
+                                {% if row.factory_id %}
+                                <a href="{{ url_for('vehicles.list_vehicles', factory_id=row.factory_id) }}" class="text-decoration-none fw-semibold">{{ row.name }}</a>
+                                {% else %}
+                                {{ row.name }}
+                                {% endif %}
+                            </td>
+                            <td class="text-end small">{{ row.total }}</td>
+                            <td class="text-end small text-success">{{ row.valid }}</td>
+                            <td class="text-end small text-warning">{{ row.attention }}</td>
+                            <td class="text-end small text-danger">{{ row.expired }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="5" class="text-center text-muted py-3">No vehicle documents on record.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 </div>
 
-<div class="card">
-    <div class="card-header fw-bold">Owner / factory breakdown</div>
-    <table class="table table-sm mb-0">
-        <thead>
-            <tr><th>Owner</th><th>Total docs</th><th>Valid</th><th>Attention</th><th>Expired</th></tr>
-        </thead>
-        <tbody>
-            {% for row in breakdown %}
-            <tr>
-                <td>{{ row.name }}</td>
-                <td>{{ row.total }}</td>
-                <td class="text-success">{{ row.valid }}</td>
-                <td class="text-warning">{{ row.attention }}</td>
-                <td class="text-danger">{{ row.expired }}</td>
-            </tr>
-            {% else %}
-            <tr><td colspan="5" class="text-center text-muted py-3">No vehicle documents on record.</td></tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</div>
+<script>
+    // Make a whole owner/factory row clickable (the owner name is already a
+    // link for keyboard/AT users; this is a convenience for mouse users).
+    document.addEventListener('DOMContentLoaded', function () {
+        document.querySelectorAll('.owner-row[data-href]').forEach(function (tr) {
+            tr.addEventListener('click', function (e) {
+                if (e.target.closest('a')) return;  // let real links work
+                window.location = tr.getAttribute('data-href');
+            });
+            tr.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') window.location = tr.getAttribute('data-href');
+            });
+        });
+    });
+</script>
 
 <p class="text-muted small mt-3">
     Totals cover active vehicles only. Statuses recomputed on load against {{ today }}.
