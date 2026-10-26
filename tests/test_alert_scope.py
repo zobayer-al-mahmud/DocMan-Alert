@@ -586,9 +586,9 @@ def main():
             check("authorized checkup download", download.status_code == 200, str(download.status_code))
             download.close()
 
+        # My Alerts is Super Admin + Administration only (covered in test_alert_history_rbac.py).
         mine = client.get("/my-alerts?show=all")
-        check("my alerts page loads", mine.status_code == 200 and b"My Alert Responsibilities" in mine.data)
-        check("my alerts explains the source", b"Uploader" in mine.data or b"Company" in mine.data)
+        check("my alerts is denied to a non-Super-Admin", mine.status_code == 403, str(mine.status_code))
 
         with app.app_context():
             sample = (
@@ -607,11 +607,17 @@ def main():
             history_page.status_code == 200 and b"Alert History" in history_page.data and b"ZZ Scope Fire License" in history_page.data,
         )
         if history_id:
+            # Only the addressed recipient (not the uploader) may open this email.
+            as_uploader = client.get(f"/alert-history/{history_id}")
+            check("history detail is hidden from a non-recipient", as_uploader.status_code == 404,
+                  str(as_uploader.status_code))
+            login("zz_scope_doc")
             detail = client.get(f"/alert-history/{history_id}")
             check(
                 "history detail shows the recipient",
                 detail.status_code == 200 and b"zz.doc@ananta.com.bd" in detail.data,
             )
+            login("zz_scope_up")
         else:
             check("history detail shows the recipient", False, "missing history row")
 
@@ -623,7 +629,10 @@ def main():
             check("other factory listing omits this document", b"ZZ Scope Fire License" not in listing.data)
         login("zz_scope_view")
         viewed = client.get("/alert-history/")
-        check("viewer sees alert history", viewed.status_code == 200 and b"ZZ Scope Fire License" in viewed.data)
+        check(
+            "viewer opens alert history but sees only their own alerts",
+            viewed.status_code == 200 and b"ZZ Scope Fire License" not in viewed.data,
+        )
         guest = app.test_client()
         locked = guest.get("/alert-history/")
         check("alert history requires login", locked.status_code == 302, str(locked.status_code))

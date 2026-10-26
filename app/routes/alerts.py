@@ -1,6 +1,6 @@
 from flask import Blueprint, abort, render_template, request
 from flask_login import current_user, login_required
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import selectinload
 
 from app.models import AlertEmail, AlertEmailItem
@@ -31,7 +31,9 @@ def _personal_recipient_filter():
     """Match alert emails addressed to the signed-in user."""
     conditions = [AlertEmail.user_id == current_user.id]
     if current_user.email:
-        conditions.append(AlertEmail.recipient_email == current_user.email)
+        conditions.append(
+            func.lower(AlertEmail.recipient_email) == current_user.email.strip().lower()
+        )
     return or_(*conditions)
 
 
@@ -51,7 +53,8 @@ def _visible_items(email):
     if _sees_all_factories():
         return items
     factory_id = current_user.factory_id
-    return [item for item in items if item.factory_id == factory_id]
+    # Records with no factory (unmapped vehicles) are not factory-restricted.
+    return [item for item in items if item.factory_id in (None, factory_id)]
 
 
 @alerts_bp.route("/")
@@ -74,12 +77,14 @@ def list_history():
     if status:
         query = query.filter(AlertEmail.status == status)
     if q:
-        like = f"%{q}%"
+        # Escape LIKE wildcards so "%" or "_" in the box match literally.
+        escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        like = f"%{escaped}%"
         query = query.filter(or_(
-            AlertEmail.recipient_email.ilike(like),
-            AlertEmail.recipient_name.ilike(like),
-            AlertEmail.subject.ilike(like),
-            AlertEmail.items.any(AlertEmailItem.title.ilike(like)),
+            AlertEmail.recipient_email.ilike(like, escape="\\"),
+            AlertEmail.recipient_name.ilike(like, escape="\\"),
+            AlertEmail.subject.ilike(like, escape="\\"),
+            AlertEmail.items.any(AlertEmailItem.title.ilike(like, escape="\\")),
         ))
 
     pagination = query.paginate(page=page, per_page=30, error_out=False)
@@ -107,7 +112,10 @@ def view_history(email_id):
     if email is None:
         abort(404)
     items = _visible_items(email)
-    if email.alert_type != "test" and not items and not _sees_all_factories():
+    # Hide an email only when every record in it belongs to another factory.
+    # Emails that name no record (e.g. vehicle manual alerts) stay visible to
+    # their own recipient, matching what the list page shows.
+    if email.alert_type != "test" and email.items and not items and not _sees_all_factories():
         abort(404)
     return render_template(
         "alerts/history_detail.html",

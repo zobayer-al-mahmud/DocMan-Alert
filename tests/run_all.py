@@ -20,6 +20,7 @@ TESTS = [
     "test_excel_import.py",
     "test_alert_recipients.py",
     "test_alert_scope.py",
+    "test_alert_history_rbac.py",
     "test_alert_buckets.py",
     "test_default_group_emails.py",
     "test_production_mail.py",
