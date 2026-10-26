@@ -28,6 +28,7 @@ TESTS = [
     "test_ocr.py",
     "test_employee_ocr_extract.py",
     "test_vehicles.py",
+    "test_vehicle_alerts.py",
 ]
 
 

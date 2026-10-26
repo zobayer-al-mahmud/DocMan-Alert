@@ -601,10 +601,15 @@ def record_snapshot(record, kind):
     """
     factory, department, _company_id = _record_scope(record, kind)
     company_name = factory.company.name if factory and factory.company else "-"
+    if kind == "vehicle" and company_name == "-":
+        # Personal or unmapped vehicles carry their company directly.
+        owning = getattr(getattr(record, "vehicle", None), "company", None)
+        company_name = owning.name if owning else "-"
     expiry = record.expiry_date
     no_expiry = bool(getattr(record, "no_expiry", False))
     alert_status = compute_status(expiry, no_expiry)
 
+    vehicle_details = {}
     if kind == "document":
         title = record.doc_name or "Document"
         doc_type = (record.doc_type or "").strip()
@@ -621,6 +626,15 @@ def record_snapshot(record, kind):
         issue_date = record.issue_date
         certificate = (record.doc_number or "").strip()
         subject_label = label
+        vehicle_details = {
+            "reg_no": (vehicle.registration_no or "").strip() if vehicle else "",
+            "vehicle_type": (vehicle.vehicle_type or "").strip() if vehicle else "",
+            "owner": ((vehicle.owner_name_raw or "").strip() if vehicle else "")
+                     or (factory.name if factory else ""),
+            "office": (vehicle.office_label or "").strip() if vehicle else "",
+            "renewal_status": (record.renewal_status or "").strip(),
+            "note": (record.note or "").strip(),
+        }
     elif kind == "license":
         base = (record.compliance_type or "License").strip() or "License"
         employee = record.employee
@@ -658,6 +672,7 @@ def record_snapshot(record, kind):
         "no_expiry": no_expiry,
         "status": alert_status,
         "days": None if no_expiry else days_remaining(expiry),
+        **vehicle_details,
     }
 
 
@@ -714,7 +729,50 @@ _SNAPSHOT_FIELDS = (
 )
 
 
+NOT_RECORDED = "Not recorded"
+
+
+def _vehicle_rows_html(snapshot):
+    """Vehicle alerts always list every field. A value that is not stored is
+    shown as "Not recorded" instead of being left out or guessed."""
+    def text(key):
+        return (str(snapshot.get(key) or "").strip()) or NOT_RECORDED
+
+    def scoped(key):
+        value = snapshot.get(key)
+        return value if value and value != "-" else NOT_RECORDED
+
+    has_expiry = bool(snapshot.get("no_expiry") or snapshot.get("expiry"))
+    fields = [
+        ("Registration No.", text("reg_no")),
+        ("Vehicle Type", text("vehicle_type")),
+        ("Owner", text("owner")),
+        ("Company", scoped("company")),
+        ("Factory", scoped("factory")),
+    ]
+    if snapshot.get("office"):
+        fields.append(("Office", snapshot["office"]))
+    fields += [
+        ("Department", scoped("department")),
+        ("Document Type", text("doc_type")),
+        ("Document No.", text("certificate")),
+        ("Issue Date", _fmt_date(snapshot["issue_date"]) if snapshot.get("issue_date") else NOT_RECORDED),
+        ("Expiry Date", _expiry_label(snapshot) if has_expiry else NOT_RECORDED),
+        ("Days Remaining", _remaining_label(snapshot) if has_expiry else NOT_RECORDED),
+        ("Alert Status", text("status")),
+        ("Renewal Status", text("renewal_status")),
+    ]
+    if snapshot.get("note"):
+        fields.append(("Note", snapshot["note"]))
+    return "".join(
+        f"<strong>{html.escape(label)}:</strong> {html.escape(str(value))}<br>"
+        for label, value in fields
+    )
+
+
 def _snapshot_rows_html(snapshot):
+    if snapshot.get("kind") == "vehicle":
+        return _vehicle_rows_html(snapshot)
     rows = []
     for label, key, optional, kind in _SNAPSHOT_FIELDS:
         if kind == "expiry":
@@ -747,6 +805,23 @@ def weekly_subject_for(snapshot):
 
 def manual_subject_for(snapshot):
     return f"Compliance Notice: {snapshot['title']}"
+
+
+VEHICLE_ROUTING_NOTE = (
+    "It goes to the Transport team for this vehicle, the person who added the "
+    "vehicle, the configured Transport recipients and the Transport group mailbox."
+)
+
+
+def scheduled_intro(snapshot, label):
+    """Intro line for scheduled alerts; vehicles use their own routing text."""
+    if snapshot.get("kind") == "vehicle":
+        return f"Scheduled {label} alert for this vehicle document. {VEHICLE_ROUTING_NOTE}"
+    return (
+        f"Scheduled {label} alert for this document. "
+        "It goes to the assigned person, or to the document's department, "
+        "or to the company when that department has no recipient."
+    )
 
 
 def build_single_alert_html(snapshot, intro, recipient_name="Recipient"):
@@ -843,8 +918,22 @@ def _load_attention(model, statuses, kind):
         model.is_active.is_(True),
         model.status.in_(statuses),
     ).order_by(model.expiry_date)
+    if kind == "vehicle":
+        # Archived vehicles keep their document rows; they must not alert.
+        from app.models import Vehicle
+        query = query.filter(model.vehicle.has(Vehicle.is_active.is_(True)))
     if statuses == NORMAL_ALERT_STATUSES or set(statuses) == set(NORMAL_ALERT_STATUSES):
-        query = query.limit(EMAIL_ROW_LIMIT)
+        rows = query.limit(EMAIL_ROW_LIMIT + 1).all()
+        if len(rows) > EMAIL_ROW_LIMIT:
+            log_event(
+                "ALERT_RECIPIENT_SKIPPED",
+                f"Weekly alert: more than {EMAIL_ROW_LIMIT} {kind} records need attention; "
+                f"only the {EMAIL_ROW_LIMIT} earliest-expiring were included.",
+                level="WARNING",
+                username_or_process="system",
+            )
+            rows = rows[:EMAIL_ROW_LIMIT]
+        return rows
     return query.all()
 
 
@@ -968,7 +1057,10 @@ def send_compliance_alert(documents=None, licenses=None, checkups=None, vehicles
         documents = [d for d in (documents or []) if _in_weekly(d)]
         licenses = [l for l in (licenses or []) if _in_weekly(l)]
         checkups = [c for c in (checkups or []) if _in_weekly(c)]
-        vehicles = [v for v in (vehicles or []) if _in_weekly(v)]
+        vehicles = [
+            v for v in (vehicles or [])
+            if _in_weekly(v) and getattr(getattr(v, "vehicle", None), "is_active", True)
+        ]
 
     total_count = len(documents) + len(licenses) + len(checkups) + len(vehicles)
     if total_count == 0:
@@ -986,11 +1078,6 @@ def send_compliance_alert(documents=None, licenses=None, checkups=None, vehicles
 
     sent_count = 0
     errors = []
-    intro = (
-        "Scheduled weekly alert for this document. "
-        "It goes to the assigned person, or to the document's department, "
-        "or to the company when that department has no recipient."
-    )
     for email in sorted(buckets):
         bucket = buckets[email]
         for kind in ("document", "license", "checkup", "vehicle"):
@@ -1000,7 +1087,7 @@ def send_compliance_alert(documents=None, licenses=None, checkups=None, vehicles
                 item = _history_item(kind, record, sources)
                 error_name = _deliver_alert(
                     "weekly", subject, email, bucket["user"],
-                    build_single_alert_html(snapshot, intro),
+                    build_single_alert_html(snapshot, scheduled_intro(snapshot, "weekly")),
                     [item] if item else [],
                 )
                 if error_name:
@@ -1087,7 +1174,11 @@ def send_emergency_alerts(documents=None, licenses=None, checkups=None, vehicles
         documents = documents or []
         licenses = licenses or []
         checkups = checkups or []
-        vehicles = vehicles or []
+        # Archived vehicles keep their document rows; never alert on them.
+        vehicles = [
+            v for v in (vehicles or [])
+            if getattr(getattr(v, "vehicle", None), "is_active", True)
+        ]
 
     groups = (("document", documents), ("license", licenses),
               ("checkup", checkups), ("vehicle", vehicles))
@@ -1129,18 +1220,13 @@ def send_emergency_alerts(documents=None, licenses=None, checkups=None, vehicles
     sent_count = 0
     errors = []
     delivered = set()
-    urgent_intro = (
-        "Scheduled urgent alert for this document. "
-        "It goes to the assigned person, or to the document's department, "
-        "or to the company when that department has no recipient."
-    )
     for email in sorted(by_email):
         slot = by_email[email]
         for snapshot, marker, history_item in slot["rows"]:
             subject = emergency_subject_for(snapshot)
             error_name = _deliver_alert(
                 "emergency", subject, email, slot["user"],
-                build_single_alert_html(snapshot, urgent_intro),
+                build_single_alert_html(snapshot, scheduled_intro(snapshot, "urgent")),
                 [history_item] if history_item else [],
             )
             if error_name:
@@ -1247,10 +1333,18 @@ def resolve_vehicle_alert_recipients(vehicle_document, skipped=None):
     if vehicle and vehicle.creator is not None:
         consider(vehicle.creator, SOURCE_UPLOADER)
 
-    # Transport department group mailbox
     transport_dept = Department.query.filter(
         db.func.lower(Department.name) == "transport"
     ).first()
+
+    # People an administrator added under Departments -> Transport -> recipients.
+    # Same factory rule as the Transport roles: own factory or Global Access.
+    if transport_dept is not None:
+        for user in list(transport_dept.alert_recipients):
+            if factory_id is None or user.factory_id in (None, factory_id):
+                consider(user, SOURCE_DEPARTMENT)
+
+    # Transport department group mailbox
     for email in department_group_emails(transport_dept):
         key = email.lower()
         slot = found.setdefault(key, {"user": None, "email": email, "sources": []})
@@ -1307,17 +1401,14 @@ def send_manual_vehicle_doc_alert(vehicle_document, users, group_emails=None):
     errors = []
     for user, address, sources in selected:
         name = (user.full_name or user.username) if user is not None else "Recipient"
-        item = _history_item("vehicle", vehicle_document, sources) if False else None
-        # _history_item requires 'document'/'license'/'checkup' kinds; vehicle
-        # history is still useful but out of scope for v1. Pass [] so the
-        # AlertEmail row records the message without an item snapshot.
+        item = _history_item("vehicle", vehicle_document, sources)
         error_name = _deliver_alert(
             "manual",
             subject,
             address,
             user,
             build_single_alert_html(snapshot, intro, name),
-            [],
+            [item] if item else [],
         )
         if error_name:
             errors.append(f"{address}: {error_name}")

@@ -555,6 +555,9 @@ def send_doc_alert(vehicle_id, doc_type):
     if doc_type not in VEHICLE_DOC_TYPES:
         abort(404)
     vehicle = _get_vehicle_or_404(vehicle_id)
+    if not vehicle.is_active:
+        flash("This vehicle is archived. Restore it before sending an alert.", "warning")
+        return redirect(url_for("vehicles.view_vehicle", vehicle_id=vehicle.id))
     doc = next((d for d in vehicle.documents if d.doc_type == doc_type and d.is_active), None)
     if doc is None:
         flash("Add the document first before sending an alert.", "warning")
