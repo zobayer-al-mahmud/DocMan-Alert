@@ -24,6 +24,21 @@
                     </select>
                 </div>
                 <div class="mb-3">
+                    <label class="form-label">Default Factory <span class="text-muted">(optional)</span></label>
+                    <select name="default_factory_id" class="form-select">
+                        <option value="">-- Use the Factory column from the file --</option>
+                        {% for f in factories %}
+                        <option value="{{ f.id }}">{{ f.name }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="form-text">
+                        Abbreviations in the file (e.g. <strong>AGL</strong> &rarr; Ananta Garments Ltd.,
+                        <strong>ASL</strong> &rarr; Ananta Sportswear Ltd.) are matched to the full factory
+                        name automatically. This default is only used for rows whose Factory cell is blank
+                        or cannot be matched.
+                    </div>
+                </div>
+                <div class="mb-3">
                     <label class="form-label">Excel File (.xlsx)</label>
                     <input type="file" name="file" accept=".xlsx" class="form-control" required>
                 </div>

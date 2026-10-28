@@ -780,15 +780,33 @@ def _imports_dir():
     return path
 
 
+def _validated_default_factory(raw):
+    """Return a real factory id for the import's fallback factory, or None.
+
+    The default factory only fills rows whose own Factory cell is blank or
+    unrecognized. An unknown/blank/non-numeric value means 'no default'.
+    """
+    if not raw:
+        return None
+    try:
+        fid = int(raw)
+    except (TypeError, ValueError):
+        return None
+    return fid if db.session.get(Factory, fid) else None
+
+
 @employees_bp.route("/import", methods=["GET", "POST"])
 @login_required
 @roles_required("Super Admin")
 def import_data():
     from app.import_utils import IMPORT_TYPES, parse_workbook, build_factory_lookup
 
+    factories = Factory.query.order_by(Factory.name).all()
+
     if request.method == "POST":
         import_type = request.form.get("import_type", "")
         file = request.files.get("file")
+        default_factory_id = _validated_default_factory(request.form.get("default_factory_id"))
         if import_type not in IMPORT_TYPES:
             flash("Please choose a valid import type.", "danger")
             return redirect(url_for("employees.import_data"))
@@ -808,9 +826,9 @@ def import_data():
             from app.import_utils import annotate_existing, parse_full_workbook, preview_counts
             wb = load_workbook(temp_path, read_only=True, data_only=True)
             if import_type == "workbook":
-                parsed, errors, warnings = parse_full_workbook(wb, build_factory_lookup())
+                parsed, errors, warnings = parse_full_workbook(wb, build_factory_lookup(), default_factory_id)
             else:
-                parsed, errors, warnings = parse_workbook(wb.active, import_type, build_factory_lookup())
+                parsed, errors, warnings = parse_workbook(wb.active, import_type, build_factory_lookup(), default_factory_id)
             wb.close()
             importable, duplicate_warnings = annotate_existing(parsed)
             warnings = list(warnings) + duplicate_warnings
@@ -825,9 +843,11 @@ def import_data():
         return render_template("employees/import_preview.html",
                                import_type=import_type, import_type_label=IMPORT_TYPES[import_type],
                                parsed=importable, errors=errors, warnings=warnings, token=token,
-                               counts=counts, preview_rows=importable[:50])
+                               counts=counts, preview_rows=importable[:50],
+                               default_factory_id=default_factory_id,
+                               factory_names={f.id: f.name for f in factories})
 
-    return render_template("employees/import.html", import_types=IMPORT_TYPES)
+    return render_template("employees/import.html", import_types=IMPORT_TYPES, factories=factories)
 
 
 @employees_bp.route("/import/confirm", methods=["POST"])
@@ -841,6 +861,7 @@ def import_confirm():
 
     import_type = request.form.get("import_type", "")
     token = request.form.get("token", "")
+    default_factory_id = _validated_default_factory(request.form.get("default_factory_id"))
     if import_type not in IMPORT_TYPES or not token or not token.isalnum():
         flash("Invalid import request.", "danger")
         return redirect(url_for("employees.import_data"))
@@ -855,9 +876,9 @@ def import_confirm():
         from openpyxl import load_workbook
         wb = load_workbook(temp_path, read_only=True, data_only=True)
         if import_type == "workbook":
-            parsed, errors, warnings = parse_full_workbook(wb, build_factory_lookup())
+            parsed, errors, warnings = parse_full_workbook(wb, build_factory_lookup(), default_factory_id)
         else:
-            parsed, errors, warnings = parse_workbook(wb.active, import_type, build_factory_lookup())
+            parsed, errors, warnings = parse_workbook(wb.active, import_type, build_factory_lookup(), default_factory_id)
         wb.close()
         importable, duplicate_warnings = annotate_existing(parsed)
         warnings = list(warnings) + duplicate_warnings

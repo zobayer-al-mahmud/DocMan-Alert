@@ -49,6 +49,7 @@
                     {{ row.user_label }} — {{ row.email }}
                 {% elif row.employee is defined %}
                     {{ row.employee.employee_code }} — {{ row.employee.name }}
+                    <div class="text-muted small">Factory: {{ factory_names.get(row.employee.factory_id, 'Factory #' ~ row.employee.factory_id) }}</div>
                 {% else %}
                     -
                 {% endif %}
@@ -77,6 +78,7 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="import_type" value="{{ import_type }}">
     <input type="hidden" name="token" value="{{ token }}">
+    <input type="hidden" name="default_factory_id" value="{{ default_factory_id or '' }}">
     <button type="submit" class="btn btn-primary" onclick="return confirm('Import the valid rows now?');">Confirm Import</button>
     <a href="{{ url_for('employees.import_data') }}" class="btn btn-outline-secondary">Cancel</a>
 </form>

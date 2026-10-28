@@ -75,7 +75,8 @@ def parse_date(value):
     text = str(value).strip().translate(_BN_DIGITS)
     if _norm(text) in {_norm(t) for t in NO_EXPIRY_TOKENS}:
         return None, True, None
-    for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%m/%d/%Y", "%d-%b-%Y", "%d %b %Y", "%Y/%m/%d"):
+    for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%m/%d/%Y", "%d-%b-%Y", "%d %b %Y",
+                "%Y/%m/%d", "%d.%m.%Y", "%d.%m.%y"):
         try:
             return datetime.strptime(text, fmt).date(), False, None
         except ValueError:
@@ -118,6 +119,35 @@ def _read_rows(ws):
 
 
 _ID_HEADER_KEYS = {"id", "idno", "employeeid", "fid", "fidhide", "idno."}
+
+
+def _license_header_and_rows(ws):
+    """Return (header, data_rows) for a Utility/Medical license sheet.
+
+    The Ananta "Electrician and Medical License Details" workbooks put a title
+    banner on row 1 ("Ananta Garments Ltd./..."), a subtitle on row 3
+    ("Electrician License Details-2025"), blank rows, then the real header on
+    row 6: 'Sl No.', 'Name', 'Designation', 'ID No', 'Section',
+    'Registration No.', 'Category', 'Issue Date', 'Expiry Date', 'Factory',
+    'Remarks' -- usually preceded by an empty column A. Scan the first rows for
+    the header row (Name + Factory + an ID or Registration column) and return
+    it with the rows beneath it. `_header_index` searches every column, so the
+    leading empty column is harmless once the correct row is found. Falls back
+    to the first row so the flat single-row test fixtures keep working.
+    """
+    all_rows = list(ws.iter_rows(values_only=True))
+    if not all_rows:
+        return [], []
+    for i in range(min(len(all_rows), 12)):
+        cells = [_norm(c) for c in all_rows[i]]
+        has_name = any(c in ("name", "employeename") for c in cells)
+        has_factory = any(c == "factory" for c in cells)
+        has_id = any(c in _ID_HEADER_KEYS for c in cells)
+        has_reg = any(c and ("registration" in c or c == "regno") for c in cells)
+        if has_name and has_factory and (has_id or has_reg):
+            header = [str(c).strip() if c is not None else "" for c in all_rows[i]]
+            return header, all_rows[i + 1:]
+    return [str(c).strip() if c is not None else "" for c in all_rows[0]], all_rows[1:]
 
 
 def _health_header_and_rows(ws):
@@ -275,17 +305,24 @@ def resolve_department_name(factory_id, company_id, value, lookups):
     return None, f"unknown department '{name}'."
 
 
-def parse_workbook(ws, import_type, factory_lookup):
+def parse_workbook(ws, import_type, factory_lookup, default_factory_id=None):
     """Return (parsed_rows, errors, warnings). Does not write to the database.
 
     warnings are rows that will not be imported (duplicates / existing links).
     Notes about rows that WILL be imported are stored on the row as "notes".
+
+    `default_factory_id`, when set, is used only as a fallback for rows whose
+    own Factory cell is blank or cannot be matched to a factory record. It is
+    validated by the caller (route) against the real factory list.
     """
     header, data_rows = _read_rows(ws)
     parsed, errors, warnings = [], [], []
     lookups = build_org_lookups()
 
     if import_type in ("licenses", "medical"):
+        # Skip the title-banner rows and find the real column header (row 6 in
+        # the Ananta license workbooks), then parse the rows beneath it.
+        header, data_rows = _license_header_and_rows(ws)
         idx = {
             "name": _header_index(header, "Name", "Employee Name"),
             "designation": _header_index(header, "Designation"),
@@ -314,6 +351,8 @@ def parse_workbook(ws, import_type, factory_lookup):
             if not name and not code:
                 continue  # blank line
             factory_id = resolve_factory(factory_val, factory_lookup)
+            if factory_id is None:
+                factory_id = default_factory_id
             if factory_id is None:
                 errors.append(f"Row {n}: unknown factory '{factory_val}'.")
                 continue
@@ -418,6 +457,8 @@ def parse_workbook(ws, import_type, factory_lookup):
                 continue
             factory_id = resolve_factory(_cell(row, idx["factory"]), factory_lookup)
             if factory_id is None:
+                factory_id = default_factory_id
+            if factory_id is None:
                 errors.append(f"Row {n}: unknown factory.")
                 continue
             if not code:
@@ -480,7 +521,7 @@ def parse_workbook(ws, import_type, factory_lookup):
             })
 
     elif import_type == "employees":
-        parsed, errors, warnings = _parse_employees(header, data_rows, factory_lookup, lookups, parsed, errors, warnings)
+        parsed, errors, warnings = _parse_employees(header, data_rows, factory_lookup, lookups, parsed, errors, warnings, default_factory_id)
     elif import_type == "recipients":
         parsed, errors, warnings = _parse_recipients(header, data_rows, factory_lookup, lookups, parsed, errors, warnings)
     else:
@@ -591,7 +632,7 @@ def apply_import(parsed_rows):
     return summary
 
 
-def _parse_employees(header, data_rows, factory_lookup, lookups, parsed, errors, warnings):
+def _parse_employees(header, data_rows, factory_lookup, lookups, parsed, errors, warnings, default_factory_id=None):
     idx = {
         "code": _header_index(header, "Employee ID", "ID No", "ID", "ID No."),
         "name": _header_index(header, "Employee Name", "Name"),
@@ -617,6 +658,8 @@ def _parse_employees(header, data_rows, factory_lookup, lookups, parsed, errors,
         if isinstance(_cell(row, idx["code"]), float) and float(_cell(row, idx["code"])).is_integer():
             code = str(int(_cell(row, idx["code"])))
         factory_id = resolve_factory(_cell(row, idx["factory"]), factory_lookup)
+        if factory_id is None:
+            factory_id = default_factory_id
         if not code or not name:
             errors.append(f"Row {n}: employee ID and name are required.")
             continue
@@ -937,7 +980,7 @@ def _find_sheet(wb, aliases):
     return None
 
 
-def parse_full_workbook(wb, factory_lookup):
+def parse_full_workbook(wb, factory_lookup, default_factory_id=None):
     """Import sheets in dependency order. Unknown extra sheets are ignored."""
     parsed, errors, warnings = [], [], []
     found = False
@@ -946,7 +989,7 @@ def parse_full_workbook(wb, factory_lookup):
         if ws is None:
             continue
         found = True
-        sheet_parsed, sheet_errors, sheet_warnings = parse_workbook(ws, import_type, factory_lookup)
+        sheet_parsed, sheet_errors, sheet_warnings = parse_workbook(ws, import_type, factory_lookup, default_factory_id)
         prefix = ws.title
         parsed.extend(sheet_parsed)
         errors.extend(f"{prefix}: {item}" for item in sheet_errors)
