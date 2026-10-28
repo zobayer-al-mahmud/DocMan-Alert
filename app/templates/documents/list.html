@@ -66,10 +66,22 @@
     </div>
 </form>
 
+{% if can_bulk_delete %}
+<form id="bulkDeleteForm" method="POST" action="{{ url_for('documents.bulk_delete_documents') }}"
+      onsubmit="return confirmBulkDelete();">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="d-flex align-items-center gap-2 mb-2">
+        <button type="submit" class="btn btn-sm btn-danger">Delete selected</button>
+        <span id="selCount" class="text-muted small">0 selected</span>
+    </div>
+</form>
+{% endif %}
+
 <div class="card">
 <table class="table mb-0">
     <thead>
         <tr>
+            {% if can_bulk_delete %}<th style="width:32px;"><input type="checkbox" id="chkAll" title="Select all"></th>{% endif %}
             <th>Name</th><th>Type</th><th>Factory</th><th>Cert No.</th>
             <th>Expiry Date</th><th>Status</th><th>File</th><th>Actions</th>
         </tr>
@@ -77,6 +89,7 @@
     <tbody>
         {% for doc in documents %}
         <tr>
+            {% if can_bulk_delete %}<td><input type="checkbox" class="rowchk" name="ids" value="{{ doc.id }}" form="bulkDeleteForm"></td>{% endif %}
             <td><a href="{{ url_for('documents.view_document', document_id=doc.id) }}">{{ doc.doc_name }}</a></td>
             <td>{{ doc.doc_type }}</td>
             <td>{{ doc.factory.name }}</td>
@@ -121,11 +134,35 @@
             </td>
         </tr>
         {% else %}
-        <tr><td colspan="8" class="text-center text-muted py-4">No documents found.</td></tr>
+        <tr><td colspan="{{ 9 if can_bulk_delete else 8 }}" class="text-center text-muted py-4">No documents found.</td></tr>
         {% endfor %}
     </tbody>
 </table>
 </div>
+
+{% if can_bulk_delete %}
+<script>
+(function () {
+    var all = document.getElementById("chkAll");
+    var count = document.getElementById("selCount");
+    function rows() { return Array.prototype.slice.call(document.querySelectorAll(".rowchk")); }
+    function refresh() {
+        var n = rows().filter(function (c) { return c.checked; }).length;
+        if (count) count.textContent = n + " selected";
+    }
+    if (all) all.addEventListener("change", function () {
+        rows().forEach(function (c) { c.checked = all.checked; });
+        refresh();
+    });
+    rows().forEach(function (c) { c.addEventListener("change", refresh); });
+    window.confirmBulkDelete = function () {
+        var n = rows().filter(function (c) { return c.checked; }).length;
+        if (n === 0) { alert("Select at least one document."); return false; }
+        return confirm("Permanently delete " + n + " document(s) and their files? This cannot be undone.");
+    };
+})();
+</script>
+{% endif %}
 
 {% if pagination.pages > 1 %}
 <nav class="mt-3">

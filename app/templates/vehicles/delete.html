@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Delete vehicle{% endblock %}
+{% block page_title %}Delete vehicle · {{ vehicle.registration_no }}{% endblock %}
+
+{% block content %}
+<a href="{{ url_for('vehicles.view_vehicle', vehicle_id=vehicle.id) }}" class="btn btn-outline-secondary btn-sm mb-3">&larr; Back to vehicle</a>
+
+<div class="row justify-content-center">
+    <div class="col-lg-6">
+        <div class="card border-danger">
+            <div class="card-body">
+                <h5 class="text-danger">Permanently delete this vehicle?</h5>
+                <p class="mb-2">
+                    This removes <strong>{{ vehicle.registration_no }}</strong>
+                    and its <strong>{{ doc_count }}</strong> document(s), every stored
+                    file, and renewal history. This cannot be undone.
+                </p>
+                <p class="text-muted">To archive instead (reversible), use the Archive action on the list or detail page.</p>
+                <form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <div class="mb-3">
+                        <label class="form-label">Type the registration number to confirm: <strong>{{ vehicle.registration_no }}</strong></label>
+                        <input type="text" name="confirm_reg" class="form-control" autocomplete="off" required>
+                    </div>
+                    <button type="submit" class="btn btn-danger">Delete permanently</button>
+                    <a href="{{ url_for('vehicles.view_vehicle', vehicle_id=vehicle.id) }}" class="btn btn-outline-secondary">Cancel</a>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

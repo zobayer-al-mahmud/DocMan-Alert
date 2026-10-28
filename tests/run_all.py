@@ -30,6 +30,8 @@ TESTS = [
     "test_employee_ocr_extract.py",
     "test_vehicles.py",
     "test_vehicle_alerts.py",
+    "test_health_merged_import.py",
+    "test_delete_and_audit.py",
 ]
 
 

@@ -22,11 +22,12 @@ from app.models import (
 )
 from app.forms import VehicleForm, VehicleDocumentForm, VehicleDocumentRenewForm
 from app.utils import (
-    roles_required, compute_status, ALL_STATUSES, log_event, bst_today,
+    roles_required, compute_status, ALL_STATUSES, log_event, log_record, bst_today,
     EXPIRING_STATUSES, STATUS_VALID, STATUS_EXPIRED, ATTENTION_STATUSES,
     resolve_vehicle_alert_recipients, send_manual_vehicle_doc_alert,
     valid_email,
 )
+from app.models import AlertDispatch
 
 vehicles_bp = Blueprint("vehicles", __name__, url_prefix="/vehicles")
 
@@ -40,6 +41,9 @@ VIEW_ROLES = (
 )
 MANAGE_ROLES = ("Super Admin", "Administration", "Transport Manager", "Transport User")
 DELETE_ROLES = ("Super Admin", "Administration", "Transport Manager")
+# Bulk (multi-select) delete is Super Admin only. Other DELETE_ROLES delete
+# one vehicle at a time.
+BULK_DELETE_ROLES = ("Super Admin",)
 IMPORT_ROLES = ("Super Admin", "Administration", "Transport Manager")
 # Manual email alert roles. Transport User is deliberately excluded here
 # (they view the fleet but cannot send alerts); Factory Admin and Compliance
@@ -210,6 +214,7 @@ def list_vehicles():
         show_archived=show_archived,
         can_manage=current_user.role.name in MANAGE_ROLES,
         can_delete=current_user.role.name in DELETE_ROLES,
+        can_bulk_delete=current_user.role.name in BULK_DELETE_ROLES,
         can_import=current_user.role.name in IMPORT_ROLES,
         can_alert=current_user.role.name in ALERT_ROLES,
         today=bst_today(),
@@ -276,6 +281,7 @@ def add_vehicle():
             vehicle.created_by = current_user.id
             db.session.add(vehicle)
             db.session.commit()
+            log_record("created", "Vehicle", f"{vehicle.registration_no!r} (id {vehicle.id})")
             flash("Vehicle added.", "success")
             return redirect(url_for("vehicles.view_vehicle", vehicle_id=vehicle.id))
     return render_template("vehicles/form.html", form=form, title="Add Vehicle")
@@ -311,6 +317,7 @@ def edit_vehicle(vehicle_id):
             vehicle.office_label = form.office_label.data or None
             vehicle.owner_name_raw = form.owner_name_raw.data or None
             db.session.commit()
+            log_record("updated", "Vehicle", f"{vehicle.registration_no!r} (id {vehicle.id})")
             flash("Vehicle updated.", "success")
             return redirect(url_for("vehicles.view_vehicle", vehicle_id=vehicle.id))
     return render_template("vehicles/form.html", form=form, title="Edit Vehicle", vehicle=vehicle)
@@ -328,6 +335,81 @@ def archive_vehicle(vehicle_id):
     verb = "restored" if vehicle.is_active else "archived"
     flash(f"Vehicle {verb}.", "success")
     return redirect(url_for("vehicles.view_vehicle", vehicle_id=vehicle.id))
+
+
+# --- Permanent delete -------------------------------------------------------
+
+def _delete_vehicle_record(vehicle):
+    """Remove a vehicle, its documents, file versions, stored files, and alert
+    dispatches. Returns (registration_no, id). Does not commit."""
+    for doc in list(vehicle.documents or []):
+        for fv in list(doc.file_versions or []):
+            safe = (fv.file_path or "").replace("\\", "/")
+            if safe.startswith("vehicles/") and ".." not in safe.split("/"):
+                full = os.path.join(current_app.config["UPLOAD_FOLDER"], safe)
+                try:
+                    if os.path.isfile(full):
+                        os.remove(full)
+                except OSError:
+                    pass
+        AlertDispatch.query.filter_by(record_type="vehicle", record_id=doc.id).delete(
+            synchronize_session=False
+        )
+    reg = vehicle.registration_no
+    vid = vehicle.id
+    db.session.delete(vehicle)  # cascades to documents + versions
+    return reg, vid
+
+
+@vehicles_bp.route("/<int:vehicle_id>/delete", methods=["GET", "POST"])
+@login_required
+@roles_required(*DELETE_ROLES)
+def delete_vehicle(vehicle_id):
+    """Permanently remove a vehicle and all its documents/files."""
+    vehicle = _get_vehicle_or_404(vehicle_id)
+    doc_count = len([d for d in vehicle.documents])
+    if request.method == "POST":
+        typed = (request.form.get("confirm_reg") or "").strip()
+        if typed != (vehicle.registration_no or ""):
+            flash("Type the registration number exactly to confirm deletion.", "danger")
+        else:
+            reg, vid = _delete_vehicle_record(vehicle)
+            db.session.commit()
+            log_record("deleted", "Vehicle", f"{reg!r} (id {vid})")
+            flash(f"Deleted vehicle {reg} and its documents.", "success")
+            return redirect(url_for("vehicles.list_vehicles"))
+    return render_template("vehicles/delete.html", vehicle=vehicle, doc_count=doc_count)
+
+
+@vehicles_bp.route("/bulk-delete", methods=["POST"])
+@login_required
+@roles_required(*BULK_DELETE_ROLES)
+def bulk_delete_vehicles():
+    """Permanently delete several vehicles at once. Super Admin only."""
+    ids = []
+    for raw in request.form.getlist("ids"):
+        try:
+            ids.append(int(raw))
+        except (TypeError, ValueError):
+            continue
+    if not ids:
+        flash("Select at least one vehicle to delete.", "warning")
+        return redirect(url_for("vehicles.list_vehicles"))
+    vehicles = Vehicle.query.options(
+        selectinload(Vehicle.documents).selectinload(VehicleDocument.file_versions)
+    ).filter(Vehicle.id.in_(ids)).all()
+    deleted = []
+    for vehicle in vehicles:
+        reg, vid = _delete_vehicle_record(vehicle)
+        deleted.append(f"{reg} (id {vid})")
+    db.session.commit()
+    if deleted:
+        log_record("bulk_deleted", "Vehicle",
+                   f"{len(deleted)} record(s): " + "; ".join(deleted[:50]))
+        flash(f"Deleted {len(deleted)} vehicle(s) and their documents.", "success")
+    else:
+        flash("No vehicles were deleted.", "warning")
+    return redirect(url_for("vehicles.list_vehicles"))
 
 
 # --- Edit one document (dates / note / renewal_status / new file) -----------

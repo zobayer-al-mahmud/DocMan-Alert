@@ -21,16 +21,26 @@
     </div>
 </div></div>
 
+{% if can_bulk_delete %}
+<form id="bulkLicForm" method="POST" action="{{ url_for('employees.bulk_delete_licenses', employee_id=employee.id) }}"
+      onsubmit="return confirmBulk('licchk', 'license');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+</form>
+{% endif %}
 <div class="card mb-3">
     <div class="card-header d-flex justify-content-between align-items-center">
         <span>Employee Licenses</span>
-        {% if can_manage %}<a href="{{ url_for('employees.add_license', employee_id=employee.id) }}" class="btn btn-sm btn-accent">+ Add License</a>{% endif %}
+        <span class="d-flex gap-2">
+            {% if can_bulk_delete %}<button type="submit" form="bulkLicForm" class="btn btn-sm btn-danger">Delete selected</button>{% endif %}
+            {% if can_manage %}<a href="{{ url_for('employees.add_license', employee_id=employee.id) }}" class="btn btn-sm btn-accent">+ Add License</a>{% endif %}
+        </span>
     </div>
     <table class="table mb-0">
-        <thead><tr><th>Type</th><th>Reg. No.</th><th>Category</th><th>Expiry</th><th>Status</th><th>File</th><th></th></tr></thead>
+        <thead><tr>{% if can_bulk_delete %}<th style="width:28px;"><input type="checkbox" id="chkAllLic" title="Select all"></th>{% endif %}<th>Type</th><th>Reg. No.</th><th>Category</th><th>Expiry</th><th>Status</th><th>File</th><th></th></tr></thead>
         <tbody>
             {% for lic in licenses %}
             <tr>
+                {% if can_bulk_delete %}<td><input type="checkbox" class="licchk" name="ids" value="{{ lic.id }}" form="bulkLicForm"></td>{% endif %}
                 <td>{{ lic.compliance_type }}</td>
                 <td>{{ lic.registration_number or '-' }}</td>
                 <td>{{ lic.category or '-' }}</td>
@@ -51,25 +61,40 @@
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button class="btn btn-sm btn-outline-danger">Archive</button>
                     </form>{% endif %}
+                    {% if can_delete %}
+                    <form method="POST" action="{{ url_for('employees.delete_license', record_id=lic.id) }}" style="display:inline;" onsubmit="return confirm('Permanently delete this license and its file(s)? This cannot be undone.');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button class="btn btn-sm btn-danger">Delete</button>
+                    </form>{% endif %}
                 </td>
             </tr>
             {% else %}
-            <tr><td colspan="7" class="text-center text-muted py-3">No licenses recorded.</td></tr>
+            <tr><td colspan="{{ 8 if can_bulk_delete else 7 }}" class="text-center text-muted py-3">No licenses recorded.</td></tr>
             {% endfor %}
         </tbody>
     </table>
 </div>
 
+{% if can_bulk_delete %}
+<form id="bulkChkForm" method="POST" action="{{ url_for('employees.bulk_delete_checkups', employee_id=employee.id) }}"
+      onsubmit="return confirmBulk('chkchk', 'checkup');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+</form>
+{% endif %}
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">
         <span>Health Checkups</span>
-        {% if can_manage %}<a href="{{ url_for('employees.add_checkup', employee_id=employee.id) }}" class="btn btn-sm btn-accent">+ Add Checkup</a>{% endif %}
+        <span class="d-flex gap-2">
+            {% if can_bulk_delete %}<button type="submit" form="bulkChkForm" class="btn btn-sm btn-danger">Delete selected</button>{% endif %}
+            {% if can_manage %}<a href="{{ url_for('employees.add_checkup', employee_id=employee.id) }}" class="btn btn-sm btn-accent">+ Add Checkup</a>{% endif %}
+        </span>
     </div>
     <table class="table mb-0">
-        <thead><tr><th>Exam</th><th>Report Date</th><th>Expiry</th><th>Status</th><th>PRE</th><th>Test Center</th><th>File</th><th></th></tr></thead>
+        <thead><tr>{% if can_bulk_delete %}<th style="width:28px;"><input type="checkbox" id="chkAllChk" title="Select all"></th>{% endif %}<th>Exam</th><th>Report Date</th><th>Expiry</th><th>Status</th><th>PRE</th><th>Test Center</th><th>File</th><th></th></tr></thead>
         <tbody>
             {% for chk in checkups %}
             <tr>
+                {% if can_bulk_delete %}<td><input type="checkbox" class="chkchk" name="ids" value="{{ chk.id }}" form="bulkChkForm"></td>{% endif %}
                 <td>{{ chk.exam_type }}</td>
                 <td>{{ chk.report_date or '-' }}</td>
                 <td>{% if chk.no_expiry %}No expiry{% else %}{{ chk.expiry_date or '-' }}{% endif %}</td>
@@ -91,12 +116,40 @@
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button class="btn btn-sm btn-outline-danger">Archive</button>
                     </form>{% endif %}
+                    {% if can_delete %}
+                    <form method="POST" action="{{ url_for('employees.delete_checkup', record_id=chk.id) }}" style="display:inline;" onsubmit="return confirm('Permanently delete this checkup and its file(s)? This cannot be undone.');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button class="btn btn-sm btn-danger">Delete</button>
+                    </form>{% endif %}
                 </td>
             </tr>
             {% else %}
-            <tr><td colspan="8" class="text-center text-muted py-3">No health checkups recorded.</td></tr>
+            <tr><td colspan="{{ 9 if can_bulk_delete else 8 }}" class="text-center text-muted py-3">No health checkups recorded.</td></tr>
             {% endfor %}
         </tbody>
     </table>
 </div>
+
+{% if can_bulk_delete %}
+<script>
+(function () {
+    function wire(allId, cls) {
+        var all = document.getElementById(allId);
+        if (!all) return;
+        var boxes = Array.prototype.slice.call(document.querySelectorAll("." + cls));
+        all.addEventListener("change", function () {
+            boxes.forEach(function (c) { c.checked = all.checked; });
+        });
+    }
+    wire("chkAllLic", "licchk");
+    wire("chkAllChk", "chkchk");
+    window.confirmBulk = function (cls, label) {
+        var n = Array.prototype.slice.call(document.querySelectorAll("." + cls))
+            .filter(function (c) { return c.checked; }).length;
+        if (n === 0) { alert("Select at least one " + label + "."); return false; }
+        return confirm("Permanently delete " + n + " " + label + "(s) and their files? This cannot be undone.");
+    };
+})();
+</script>
+{% endif %}
 {% endblock %}

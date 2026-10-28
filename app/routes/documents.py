@@ -17,7 +17,7 @@ from app.models import (
 )
 from app.forms import DocumentForm, DocumentRenewForm
 from app.utils import (
-    roles_required, compute_status, ALL_STATUSES, valid_email, log_event,
+    roles_required, compute_status, ALL_STATUSES, valid_email, log_event, log_record,
     explain_alert_recipients, format_sources, expiry_before_issue,
     matching_alert_users, send_manual_document_alert, department_group_emails,
 )
@@ -37,6 +37,9 @@ MANAGE_ROLES = (
 DELETE_ROLES = (
     "Super Admin", "Administration", "Factory Admin", "Compliance Manager",
 )
+# Bulk (multi-select) delete is Super Admin only. Other DELETE_ROLES may only
+# delete one record at a time.
+BULK_DELETE_ROLES = ("Super Admin",)
 
 DOC_TYPE_SUGGESTIONS = [
     "Fire License", "Trade License", "Boiler Certificate", "Environmental Certificate",
@@ -286,6 +289,7 @@ def list_documents():
         show_archived=show_archived,
         can_manage=current_user.role.name in MANAGE_ROLES,
         can_delete=current_user.role.name in DELETE_ROLES,
+        can_bulk_delete=current_user.role.name in BULK_DELETE_ROLES,
         all_statuses=ALL_STATUSES,
     )
 
@@ -428,6 +432,8 @@ def _save_new_document(form, department_id, category_id, authority_id, service_i
     db.session.add(document)
     apply_recipients(document, form, eligible_ids)
     db.session.commit()
+    log_record("created", "Document", f"'{document.doc_name}' (id {document.id}) "
+               f"in factory {document.factory_id}")
 
     if form.file.data:
         try:
@@ -503,6 +509,7 @@ def edit_document(document_id):
                 _version_and_store(document, form.file.data, form.issue_date.data, expiry_date)
 
             db.session.commit()
+            log_record("updated", "Document", f"'{document.doc_name}' (id {document.id})")
             flash("Document updated successfully.", "success")
             return redirect(url_for("documents.list_documents"))
 
@@ -708,6 +715,21 @@ def send_document_alert(document_id):
     )
 
 
+def _delete_document_record(document):
+    """Remove one document, its versions, stored files, and alert dispatches.
+    Returns the document name. Does not commit."""
+    for version in list(document.versions or []):
+        _remove_stored_file(version.file_path)
+    AlertDispatch.query.filter_by(record_type="document", record_id=document.id).delete(
+        synchronize_session=False
+    )
+    name = document.doc_name
+    doc_id = document.id
+    document.alert_recipients = []
+    db.session.delete(document)
+    return name, doc_id
+
+
 @documents_bp.route("/delete/<int:document_id>", methods=["GET", "POST"])
 @login_required
 @roles_required(*DELETE_ROLES)
@@ -722,15 +744,9 @@ def delete_document(document_id):
         if typed != (document.doc_name or ""):
             flash("Type the document name exactly to confirm deletion.", "danger")
         else:
-            for version in list(document.versions or []):
-                _remove_stored_file(version.file_path)
-            AlertDispatch.query.filter_by(record_type="document", record_id=document.id).delete(
-                synchronize_session=False
-            )
-            name = document.doc_name
-            document.alert_recipients = []
-            db.session.delete(document)
+            name, doc_id = _delete_document_record(document)
             db.session.commit()
+            log_record("deleted", "Document", f"'{name}' (id {doc_id})")
             flash(f"Deleted {name}. Its files were removed from storage.", "success")
             return redirect(url_for("documents.list_documents"))
     return render_template(
@@ -738,6 +754,40 @@ def delete_document(document_id):
         document=document,
         file_count=file_count,
     )
+
+
+@documents_bp.route("/bulk-delete", methods=["POST"])
+@login_required
+@roles_required(*BULK_DELETE_ROLES)
+def bulk_delete_documents():
+    """Permanently delete several documents at once. Super Admin only."""
+    raw_ids = request.form.getlist("ids")
+    ids = []
+    for raw in raw_ids:
+        try:
+            ids.append(int(raw))
+        except (TypeError, ValueError):
+            continue
+    if not ids:
+        flash("Select at least one document to delete.", "warning")
+        return redirect(url_for("documents.list_documents"))
+    documents = Document.query.options(joinedload(Document.versions)).filter(
+        Document.id.in_(ids)
+    ).all()
+    deleted = []
+    for document in documents:
+        if not can_access_factory(document.factory_id):
+            continue
+        name, doc_id = _delete_document_record(document)
+        deleted.append(f"{name} (id {doc_id})")
+    db.session.commit()
+    if deleted:
+        log_record("bulk_deleted", "Document",
+                   f"{len(deleted)} record(s): " + "; ".join(deleted[:50]))
+        flash(f"Deleted {len(deleted)} document(s) and their files.", "success")
+    else:
+        flash("No documents were deleted.", "warning")
+    return redirect(url_for("documents.list_documents"))
 
 
 def _public_file_name(version):

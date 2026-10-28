@@ -69,6 +69,6 @@ def login():
 def logout():
     username = current_user.username
     logout_user()
-    log_event("LOGIN_SUCCESS", f"User '{username}' logged out.", username_or_process=username)
+    log_event("LOGOUT", f"User '{username}' logged out.", username_or_process=username)
     flash("You have been logged out.", "info")
     return redirect(url_for("auth.login"))

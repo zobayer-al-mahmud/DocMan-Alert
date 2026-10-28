@@ -11,11 +11,11 @@ from sqlalchemy.orm import joinedload
 from app import db
 from app.models import (
     Department, Employee, EmployeeCompliance, EmployeeComplianceVersion, Factory,
-    HealthCheckup, HealthCheckupVersion, OcrResult, User,
+    HealthCheckup, HealthCheckupVersion, OcrResult, User, AlertDispatch,
 )
 from app.forms import EmployeeForm, EmployeeComplianceForm, HealthCheckupForm
 from app.utils import (
-    roles_required, compute_status, ALL_STATUSES, log_event, valid_email,
+    roles_required, compute_status, ALL_STATUSES, log_event, log_record, valid_email,
     expiry_before_issue, matching_alert_users,
 )
 
@@ -28,6 +28,8 @@ MANAGE_ROLES = (
 DELETE_ROLES = (
     "Super Admin", "Administration", "Factory Admin", "Compliance Manager", "Transport Manager",
 )
+# Bulk (multi-select) delete is Super Admin only.
+BULK_DELETE_ROLES = ("Super Admin",)
 
 LICENSE_TYPE_SUGGESTIONS = ["Electrician License", "Medical License", "Boiler Operator License", "Other"]
 
@@ -225,6 +227,7 @@ def add_employee():
         )
         db.session.add(employee)
         db.session.commit()
+        log_record("created", "Employee", f"{employee.name} ({employee.employee_code}), id {employee.id}")
         flash("Employee added successfully.", "success")
         return redirect(url_for("employees.view_employee", employee_id=employee.id))
     return render_template("employees/form.html", form=form, title="Add Employee")
@@ -268,6 +271,7 @@ def edit_employee(employee_id):
         employee.receive_alerts = receive_alerts
         employee.is_active = (form.is_active.data == "1")
         db.session.commit()
+        log_record("updated", "Employee", f"{employee.name} ({employee.employee_code}), id {employee.id}")
         flash("Employee updated successfully.", "success")
         return redirect(url_for("employees.view_employee", employee_id=employee.id))
     return render_template("employees/form.html", form=form, title="Edit Employee")
@@ -285,6 +289,8 @@ def view_employee(employee_id):
         licenses=sorted(licenses, key=lambda c: (c.expiry_date is None, c.expiry_date or date.max)),
         checkups=sorted(checkups, key=lambda h: (h.expiry_date is None, h.expiry_date or date.max)),
         can_manage=current_user.role.name in MANAGE_ROLES,
+        can_delete=current_user.role.name in DELETE_ROLES,
+        can_bulk_delete=current_user.role.name in BULK_DELETE_ROLES,
     )
 
 
@@ -329,6 +335,7 @@ def add_license(employee_id):
             except OSError:
                 flash("License saved, but the file could not be stored.", "warning")
         db.session.commit()
+        log_record("created", "Employee License", f"{record.compliance_type} for employee {employee.id} (record {record.id})")
         flash("License added.", "success")
         return redirect(url_for("employees.view_employee", employee_id=employee.id))
     return render_template("employees/license_form.html", form=form, employee=employee,
@@ -372,11 +379,55 @@ def edit_license(record_id):
             except OSError:
                 flash("Saved, but the file could not be stored.", "warning")
         db.session.commit()
+        log_record("updated", "Employee License", f"{record.compliance_type} (record {record.id})")
         flash("License updated.", "success")
         return redirect(url_for("employees.view_employee", employee_id=employee.id))
     return render_template("employees/license_form.html", form=form, employee=employee,
                            title="Edit License", suggestions=LICENSE_TYPE_SUGGESTIONS,
                            eligible_recipients=eligible, ineligible_recipients=ineligible)
+
+
+def _remove_employee_file(relative_path):
+    """Delete one stored employee file, constrained to the employees subtree."""
+    safe = (relative_path or "").replace("\\", "/")
+    if not safe.startswith("employees/") or ".." in safe.split("/"):
+        return
+    full = os.path.join(current_app.config["UPLOAD_FOLDER"], safe)
+    try:
+        if os.path.isfile(full):
+            os.remove(full)
+    except OSError:
+        pass
+
+
+def _delete_license_record(record):
+    """Remove one license, its file versions, stored files, and dispatches."""
+    _remove_employee_file(record.file_path)
+    for v in list(record.file_versions or []):
+        _remove_employee_file(v.file_path)
+    AlertDispatch.query.filter_by(record_type="license", record_id=record.id).delete(
+        synchronize_session=False
+    )
+    label = record.compliance_type
+    rid = record.id
+    record.alert_recipients = []
+    db.session.delete(record)
+    return label, rid
+
+
+def _delete_checkup_record(record):
+    """Remove one checkup, its file versions, stored files, and dispatches."""
+    _remove_employee_file(record.file_path)
+    for v in list(record.file_versions or []):
+        _remove_employee_file(v.file_path)
+    AlertDispatch.query.filter_by(record_type="checkup", record_id=record.id).delete(
+        synchronize_session=False
+    )
+    label = record.exam_type
+    rid = record.id
+    record.alert_recipients = []
+    db.session.delete(record)
+    return label, rid
 
 
 @employees_bp.route("/license/<int:record_id>/archive", methods=["POST"])
@@ -388,6 +439,50 @@ def archive_license(record_id):
     record.is_active = False
     db.session.commit()
     flash("License archived.", "success")
+    return redirect(url_for("employees.view_employee", employee_id=employee.id))
+
+
+@employees_bp.route("/license/<int:record_id>/delete", methods=["POST"])
+@login_required
+@roles_required(*DELETE_ROLES)
+def delete_license(record_id):
+    record = EmployeeCompliance.query.get_or_404(record_id)
+    employee = _get_employee_or_403(record.employee_id)
+    label, rid = _delete_license_record(record)
+    db.session.commit()
+    log_record("deleted", "Employee License", f"{label} (record {rid}) of employee {employee.id}")
+    flash("License deleted.", "success")
+    return redirect(url_for("employees.view_employee", employee_id=employee.id))
+
+
+@employees_bp.route("/<int:employee_id>/licenses/bulk-delete", methods=["POST"])
+@login_required
+@roles_required(*BULK_DELETE_ROLES)
+def bulk_delete_licenses(employee_id):
+    employee = _get_employee_or_403(employee_id)
+    ids = []
+    for raw in request.form.getlist("ids"):
+        try:
+            ids.append(int(raw))
+        except (TypeError, ValueError):
+            continue
+    if not ids:
+        flash("Select at least one license to delete.", "warning")
+        return redirect(url_for("employees.view_employee", employee_id=employee.id))
+    records = EmployeeCompliance.query.filter(
+        EmployeeCompliance.id.in_(ids), EmployeeCompliance.employee_id == employee.id
+    ).all()
+    deleted = []
+    for record in records:
+        label, rid = _delete_license_record(record)
+        deleted.append(f"{label} (record {rid})")
+    db.session.commit()
+    if deleted:
+        log_record("bulk_deleted", "Employee License",
+                   f"{len(deleted)} record(s) of employee {employee.id}: " + "; ".join(deleted[:50]))
+        flash(f"Deleted {len(deleted)} license(s).", "success")
+    else:
+        flash("No licenses were deleted.", "warning")
     return redirect(url_for("employees.view_employee", employee_id=employee.id))
 
 
@@ -463,6 +558,7 @@ def add_checkup(employee_id):
             except OSError:
                 flash("Checkup saved, but the file could not be stored.", "warning")
         db.session.commit()
+        log_record("created", "Health Checkup", f"{record.exam_type} for employee {employee.id} (record {record.id})")
         flash("Health checkup added.", "success")
         return redirect(url_for("employees.view_employee", employee_id=employee.id))
     return render_template("employees/checkup_form.html", form=form, employee=employee, title="Add Health Checkup",
@@ -503,6 +599,7 @@ def edit_checkup(record_id):
             except OSError:
                 flash("Saved, but the file could not be stored.", "warning")
         db.session.commit()
+        log_record("updated", "Health Checkup", f"{record.exam_type} (record {record.id})")
         flash("Health checkup updated.", "success")
         return redirect(url_for("employees.view_employee", employee_id=employee.id))
     return render_template("employees/checkup_form.html", form=form, employee=employee, title="Edit Health Checkup",
@@ -518,6 +615,50 @@ def archive_checkup(record_id):
     record.is_active = False
     db.session.commit()
     flash("Health checkup archived.", "success")
+    return redirect(url_for("employees.view_employee", employee_id=employee.id))
+
+
+@employees_bp.route("/checkup/<int:record_id>/delete", methods=["POST"])
+@login_required
+@roles_required(*DELETE_ROLES)
+def delete_checkup(record_id):
+    record = HealthCheckup.query.get_or_404(record_id)
+    employee = _get_employee_or_403(record.employee_id)
+    label, rid = _delete_checkup_record(record)
+    db.session.commit()
+    log_record("deleted", "Health Checkup", f"{label} (record {rid}) of employee {employee.id}")
+    flash("Health checkup deleted.", "success")
+    return redirect(url_for("employees.view_employee", employee_id=employee.id))
+
+
+@employees_bp.route("/<int:employee_id>/checkups/bulk-delete", methods=["POST"])
+@login_required
+@roles_required(*BULK_DELETE_ROLES)
+def bulk_delete_checkups(employee_id):
+    employee = _get_employee_or_403(employee_id)
+    ids = []
+    for raw in request.form.getlist("ids"):
+        try:
+            ids.append(int(raw))
+        except (TypeError, ValueError):
+            continue
+    if not ids:
+        flash("Select at least one checkup to delete.", "warning")
+        return redirect(url_for("employees.view_employee", employee_id=employee.id))
+    records = HealthCheckup.query.filter(
+        HealthCheckup.id.in_(ids), HealthCheckup.employee_id == employee.id
+    ).all()
+    deleted = []
+    for record in records:
+        label, rid = _delete_checkup_record(record)
+        deleted.append(f"{label} (record {rid})")
+    db.session.commit()
+    if deleted:
+        log_record("bulk_deleted", "Health Checkup",
+                   f"{len(deleted)} record(s) of employee {employee.id}: " + "; ".join(deleted[:50]))
+        flash(f"Deleted {len(deleted)} checkup(s).", "success")
+    else:
+        flash("No checkups were deleted.", "warning")
     return redirect(url_for("employees.view_employee", employee_id=employee.id))
 
 

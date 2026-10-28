@@ -84,7 +84,7 @@ def roles_required(*role_names):
 
 VALID_SYSTEM_EVENTS = {
     "APP_START", "APP_STOP", "APP_FAILURE",
-    "LOGIN_SUCCESS", "LOGIN_FAILURE", "ACCOUNT_SECURITY_EVENT",
+    "LOGIN_SUCCESS", "LOGIN_FAILURE", "LOGOUT", "ACCOUNT_SECURITY_EVENT",
     "JOB_START", "JOB_SUCCESS", "JOB_FAILURE",
     "BACKUP_SUCCESS", "BACKUP_FAILURE",
     "RESTORE_SUCCESS", "RESTORE_FAILURE",
@@ -94,8 +94,29 @@ VALID_SYSTEM_EVENTS = {
     "ALERT_SENT", "ALERT_FAILED",
     "EMERGENCY_ALERT_SENT", "EMERGENCY_ALERT_FAILED",
     "ALERT_RECIPIENT_SKIPPED",
+    # Business record audit trail (who created/updated/deleted what).
+    "RECORD_CREATED", "RECORD_UPDATED", "RECORD_DELETED", "RECORD_BULK_DELETED",
     "UNHANDLED_EXCEPTION",
 }
+
+_RECORD_ACTION_EVENTS = {
+    "created": "RECORD_CREATED",
+    "updated": "RECORD_UPDATED",
+    "deleted": "RECORD_DELETED",
+    "bulk_deleted": "RECORD_BULK_DELETED",
+}
+
+
+def log_record(action, record_type, detail, level="INFO"):
+    """Audit one business record change (create / update / delete / bulk).
+
+    `record_type` is a short noun like "Document", "Vehicle", "Employee
+    License". `detail` identifies the record (name + id). Never pass document
+    contents or secrets. The acting user and timestamp are filled in by
+    log_event from the request context.
+    """
+    event = _RECORD_ACTION_EVENTS.get(action, "RECORD_UPDATED")
+    log_event(event, f"{record_type}: {detail}", level=level)
 
 
 def log_event(event_type, message="", level="INFO", username_or_process=None,

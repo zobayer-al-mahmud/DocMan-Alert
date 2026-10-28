@@ -81,10 +81,22 @@
     </div>
 </form>
 
+{% if can_bulk_delete %}
+<form id="bulkDeleteForm" method="POST" action="{{ url_for('vehicles.bulk_delete_vehicles') }}"
+      onsubmit="return confirmBulkDelete();">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="d-flex align-items-center gap-2 mb-2">
+        <button type="submit" class="btn btn-sm btn-danger">Delete selected</button>
+        <span id="selCount" class="text-muted small">0 selected</span>
+    </div>
+</form>
+{% endif %}
+
 <div class="card vehicle-list-card">
 <table class="table table-sm mb-0 align-middle">
     <thead>
         <tr>
+            {% if can_bulk_delete %}<th style="width:32px;"><input type="checkbox" id="chkAll" title="Select all"></th>{% endif %}
             <th>Registration</th>
             <th>Vehicle Type</th>
             <th>Owner</th>
@@ -101,6 +113,7 @@
         {% set by_type = {} %}
         {% for d in v.documents if d.is_active %}{% set _ = by_type.update({d.doc_type: d}) %}{% endfor %}
         <tr>
+            {% if can_bulk_delete %}<td><input type="checkbox" class="rowchk" name="ids" value="{{ v.id }}" form="bulkDeleteForm"></td>{% endif %}
             <td>
                 <a href="{{ url_for('vehicles.view_vehicle', vehicle_id=v.id) }}">
                     <strong>{{ v.registration_no }}</strong>
@@ -167,6 +180,12 @@
                                 </button>
                             </form>
                         </li>
+                        <li>
+                            <a class="dropdown-item text-danger"
+                               href="{{ url_for('vehicles.delete_vehicle', vehicle_id=v.id) }}">
+                                Delete permanently
+                            </a>
+                        </li>
                         {% endif %}
                         {% for t in ['tax_token', 'fitness', 'route_permit', 'blue_book'] %}
                         {% set d = by_type.get(t) %}
@@ -226,7 +245,7 @@
             </td>
         </tr>
         {% else %}
-        <tr><td colspan="9" class="text-center text-muted py-4">No vehicles match these filters.</td></tr>
+        <tr><td colspan="{{ 10 if can_bulk_delete else 9 }}" class="text-center text-muted py-4">No vehicles match these filters.</td></tr>
         {% endfor %}
     </tbody>
 </table>
@@ -249,6 +268,30 @@
 {% endif %}
 
 <p class="text-muted small mt-2">Showing {{ pagination.items|length }} of {{ pagination.total }} vehicles.</p>
+
+{% if can_bulk_delete %}
+<script>
+(function () {
+    var all = document.getElementById("chkAll");
+    var count = document.getElementById("selCount");
+    function rows() { return Array.prototype.slice.call(document.querySelectorAll(".rowchk")); }
+    function refresh() {
+        var n = rows().filter(function (c) { return c.checked; }).length;
+        if (count) count.textContent = n + " selected";
+    }
+    if (all) all.addEventListener("change", function () {
+        rows().forEach(function (c) { c.checked = all.checked; });
+        refresh();
+    });
+    rows().forEach(function (c) { c.addEventListener("change", refresh); });
+    window.confirmBulkDelete = function () {
+        var n = rows().filter(function (c) { return c.checked; }).length;
+        if (n === 0) { alert("Select at least one vehicle."); return false; }
+        return confirm("Permanently delete " + n + " vehicle(s) and their documents? This cannot be undone.");
+    };
+})();
+</script>
+{% endif %}
 
 <script>
     // Re-initialize vehicle-row dropdowns with a fixed-position Popper
