@@ -61,6 +61,7 @@
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button class="btn btn-sm btn-outline-danger">Archive</button>
                     </form>{% endif %}
+                    {% if can_alert %}<a href="{{ url_for('employees.send_license_alert', record_id=lic.id) }}" class="btn btn-sm btn-outline-warning">Send alert</a>{% endif %}
                     {% if can_delete %}
                     <form method="POST" action="{{ url_for('employees.delete_license', record_id=lic.id) }}" style="display:inline;" onsubmit="return confirm('Permanently delete this license and its file(s)? This cannot be undone.');">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -116,6 +117,7 @@
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button class="btn btn-sm btn-outline-danger">Archive</button>
                     </form>{% endif %}
+                    {% if can_alert %}<a href="{{ url_for('employees.send_checkup_alert', record_id=chk.id) }}" class="btn btn-sm btn-outline-warning">Send alert</a>{% endif %}
                     {% if can_delete %}
                     <form method="POST" action="{{ url_for('employees.delete_checkup', record_id=chk.id) }}" style="display:inline;" onsubmit="return confirm('Permanently delete this checkup and its file(s)? This cannot be undone.');">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Send alert · {{ record_title }}{% endblock %}
+{% block page_title %}Send {{ label }} alert · {{ employee.name }}{% endblock %}
+
+{% block content %}
+<a href="{{ url_for('employees.view_employee', employee_id=employee.id) }}" class="btn btn-outline-secondary btn-sm mb-3">&larr; Back to employee</a>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <h5 class="mb-2">{{ record_title }} &middot; {{ employee.name }} <small class="text-muted">({{ employee.employee_code }})</small></h5>
+        <p class="mb-1"><strong>Factory:</strong> {{ employee.factory.name if employee.factory else '-' }}</p>
+        <p class="mb-1"><strong>Department:</strong> {{ employee.department.name if employee.department else '-' }}</p>
+        {% if kind == 'license' %}
+        <p class="mb-1"><strong>Registration No.:</strong> {{ record.registration_number or '-' }}</p>
+        {% endif %}
+        <p class="mb-1"><strong>Expiry:</strong>
+            {% if record.no_expiry %}<em>No expiry</em>
+            {% elif record.expiry_date %}{{ record.expiry_date }}
+            {% else %}-{% endif %}
+        </p>
+        <p class="mb-0"><strong>Status:</strong> {{ record.status }}</p>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <p class="text-muted">
+            Only users in <strong>{{ employee.factory.name if employee.factory else "this factory" }}</strong>
+            and <strong>{{ employee.department.name if employee.department else "this department" }}</strong>
+            are listed. The department group mailbox is listed separately and is not filtered by factory.
+            The email names only this {{ label }}.
+        </p>
+
+        {% if users or group_emails %}
+        <form method="POST" onsubmit="return confirm('Send this alert to the selected recipients?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="border rounded p-3 mb-3" style="max-height:360px; overflow:auto;">
+                {% if group_emails %}
+                <div class="mb-2 pb-2 border-bottom">
+                    {% for address in group_emails %}
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" name="group_email" value="{{ address }}" id="group_{{ loop.index }}"
+                            {% if address.lower() in selected_group_keys %}checked{% endif %}>
+                        <label class="form-check-label" for="group_{{ loop.index }}">
+                            <strong>Department group mailbox</strong> &mdash; {{ address }}<br>
+                            <span class="text-muted">{{ employee.department.name if employee.department else "" }} &middot; All factories</span>
+                        </label>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                {% if users %}
+                {% for user in users %}
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" name="recipient_id" value="{{ user.id }}" id="user_{{ user.id }}"
+                        {% if user.id in selected_ids %}checked{% endif %}>
+                    <label class="form-check-label" for="user_{{ user.id }}">
+                        <strong>{{ user.full_name or user.username }}</strong> &mdash; {{ user.email }}<br>
+                        <span class="text-muted">{{ user.role.name }} &middot; {{ user.factory.name if user.factory else "Global Access" }} &middot; {{ user.department.name if user.department else "No department" }}</span>
+                    </label>
+                </div>
+                {% endfor %}
+                {% else %}
+                <p class="text-muted mb-0">No users belong to this employee's factory and department.</p>
+                {% endif %}
+            </div>
+            <button class="btn btn-primary" type="submit">Send this alert</button>
+            <a href="{{ url_for('employees.view_employee', employee_id=employee.id) }}" class="btn btn-outline-secondary">Cancel</a>
+        </form>
+        {% else %}
+        <p class="text-muted mb-0">
+            No users belong to this employee's factory and department
+            {% if not employee.department %}(the employee has no department set){% endif %},
+            and no group mailbox is configured. There is no recipient for this alert.
+        </p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

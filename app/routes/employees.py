@@ -16,7 +16,8 @@ from app.models import (
 from app.forms import EmployeeForm, EmployeeComplianceForm, HealthCheckupForm
 from app.utils import (
     roles_required, compute_status, ALL_STATUSES, log_event, log_record, valid_email,
-    expiry_before_issue, matching_alert_users,
+    expiry_before_issue, matching_alert_users, department_group_emails,
+    manual_employee_record_users, send_manual_employee_record_alert,
 )
 
 employees_bp = Blueprint("employees", __name__, url_prefix="/employees")
@@ -30,6 +31,13 @@ DELETE_ROLES = (
 )
 # Bulk (multi-select) delete is Super Admin only.
 BULK_DELETE_ROLES = ("Super Admin",)
+# Who may fire a manual per-record alert email. Mirrors the Documents module's
+# gate — Compliance User can send, but the Transport roles and Compliance
+# Viewer cannot.
+ALERT_ROLES = (
+    "Super Admin", "Administration", "Factory Admin",
+    "Compliance Manager", "Compliance User",
+)
 
 LICENSE_TYPE_SUGGESTIONS = ["Electrician License", "Medical License", "Boiler Operator License", "Other"]
 
@@ -291,6 +299,7 @@ def view_employee(employee_id):
         can_manage=current_user.role.name in MANAGE_ROLES,
         can_delete=current_user.role.name in DELETE_ROLES,
         can_bulk_delete=current_user.role.name in BULK_DELETE_ROLES,
+        can_alert=current_user.role.name in ALERT_ROLES,
     )
 
 
@@ -693,6 +702,113 @@ def checkup_version_file(version_id, mode):
     return send_from_directory(
         current_app.config["UPLOAD_FOLDER"], version.file_path, as_attachment=(mode == "download"),
     )
+
+
+# --- Manual per-record alerts (license / checkup) ---------------------------
+
+def _render_record_alert_page(record, kind):
+    """Shared GET+POST handler for license + checkup manual alerts."""
+    employee = record.employee
+    _get_employee_or_403(employee.id)
+    label = "license" if kind == "license" else "checkup"
+    record_title = (record.compliance_type if kind == "license" else record.exam_type) or label.title()
+    if not record.is_active:
+        flash(f"This {label} is archived. Restore it before sending an alert.", "warning")
+        return redirect(url_for("employees.view_employee", employee_id=employee.id))
+
+    users = manual_employee_record_users(record, kind)
+    available_group_emails = department_group_emails(employee.department)
+    group_lookup = {address.lower(): address for address in available_group_emails}
+    # Pre-tick: the record's own assigned recipients, plus the group mailbox.
+    selected_ids = {user.id for user in (record.alert_recipients or [])}
+    selected_group_keys = set(group_lookup)
+
+    if request.method == "POST":
+        posted_user_ids = set()
+        for raw in request.form.getlist("recipient_id"):
+            try:
+                posted_user_ids.add(int(raw))
+            except (TypeError, ValueError):
+                continue
+        posted_group_keys = {
+            address.strip().lower()
+            for address in request.form.getlist("group_email")
+            if address and address.strip()
+        }
+        chosen_group_emails = [
+            group_lookup[key] for key in posted_group_keys if key in group_lookup
+        ]
+        chosen = [user for user in users if user.id in posted_user_ids]
+        if not chosen and not chosen_group_emails:
+            if users or available_group_emails:
+                flash(f"Select at least one recipient for this {label}.", "danger")
+            else:
+                flash("There is no valid recipient for this alert.", "danger")
+            selected_ids = posted_user_ids
+            selected_group_keys = posted_group_keys
+        else:
+            # Persist the user tick-set as the record's assigned recipients so
+            # the next page load (and any scheduled alerts) reflect it. The
+            # group mailbox is not persisted on the record.
+            record.alert_recipients = chosen
+            db.session.commit()
+            sent, error, count = send_manual_employee_record_alert(
+                record, kind, chosen, group_emails=chosen_group_emails,
+            )
+            if sent and not error:
+                parts = []
+                if chosen:
+                    parts.append(", ".join(user.full_name or user.username for user in chosen))
+                if chosen_group_emails:
+                    parts.append("the department group mailbox")
+                flash(
+                    f"Alert for {record_title} ({employee.name}) sent to "
+                    f"{' and '.join(parts)}.",
+                    "success",
+                )
+                return redirect(url_for("employees.view_employee", employee_id=employee.id))
+            if sent:
+                flash("The alert was only partly sent. See Alert History.", "warning")
+            else:
+                flash("The alert could not be sent. See Alert History.", "danger")
+            return redirect(url_for("employees.view_employee", employee_id=employee.id))
+
+    return render_template(
+        "employees/send_alert.html",
+        kind=kind,
+        label=label,
+        record=record,
+        record_title=record_title,
+        employee=employee,
+        users=users,
+        selected_ids=selected_ids,
+        group_emails=available_group_emails,
+        selected_group_keys=selected_group_keys,
+    )
+
+
+@employees_bp.route("/license/<int:record_id>/send-alert", methods=["GET", "POST"])
+@login_required
+@roles_required(*ALERT_ROLES)
+def send_license_alert(record_id):
+    record = EmployeeCompliance.query.options(
+        joinedload(EmployeeCompliance.employee).joinedload(Employee.department),
+        joinedload(EmployeeCompliance.employee).joinedload(Employee.factory),
+        joinedload(EmployeeCompliance.alert_recipients),
+    ).get_or_404(record_id)
+    return _render_record_alert_page(record, "license")
+
+
+@employees_bp.route("/checkup/<int:record_id>/send-alert", methods=["GET", "POST"])
+@login_required
+@roles_required(*ALERT_ROLES)
+def send_checkup_alert(record_id):
+    record = HealthCheckup.query.options(
+        joinedload(HealthCheckup.employee).joinedload(Employee.department),
+        joinedload(HealthCheckup.employee).joinedload(Employee.factory),
+        joinedload(HealthCheckup.alert_recipients),
+    ).get_or_404(record_id)
+    return _render_record_alert_page(record, "checkup")
 
 
 # --- Cross-employee compliance / checkup lists (search + filter) ------------

@@ -1535,3 +1535,103 @@ def send_manual_document_alert(document, users, group_emails=None):
     return sent_count > 0, error_text, sent_count
 
 
+def manual_employee_record_users(record, kind):
+    """Candidate individual recipients for a manual Employee Compliance alert.
+
+    Mirrors the Documents module's eligibility rule — a user is listed when
+    they belong to the record's factory and department. kind is "license" or
+    "checkup". When the employee has no department set we return an empty
+    list; callers also show the department group mailbox when configured.
+    """
+    employee = getattr(record, "employee", None)
+    if employee is None:
+        return []
+    return matching_alert_users(employee.factory_id, employee.department_id)
+
+
+def send_manual_employee_record_alert(record, kind, users, group_emails=None):
+    """Email the selected users and department group mailboxes for one
+    employee license / health checkup. kind is "license" or "checkup".
+
+    Mirrors send_manual_document_alert. The caller is responsible for
+    validating that `users` and `group_emails` come from the allowed lists
+    (manual_employee_record_users + department_group_emails).
+    """
+    if kind not in ("license", "checkup"):
+        raise ValueError(f"unsupported kind for manual EC alert: {kind}")
+    employee = getattr(record, "employee", None)
+    factory_id = employee.factory_id if employee else None
+    department_id = employee.department_id if employee else None
+    selected = []
+    seen = set()
+    for user in users or []:
+        if not department_id or not user_matches_factory_department(user, factory_id, department_id):
+            continue
+        if not valid_email(user.email):
+            continue
+        address = user.email.strip()
+        key = address.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        selected.append((user, address, [SOURCE_RECORD]))
+    if group_emails is None:
+        department = employee.department if employee else None
+        group_emails = department_group_emails(department)
+    for address in group_emails or []:
+        if not valid_email(address):
+            continue
+        clean = address.strip()
+        key = clean.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        selected.append((None, clean, [SOURCE_GROUP]))
+    if not selected:
+        return False, "No valid recipients to send to.", 0
+
+    snapshot = record_snapshot(record, kind)
+    subject = manual_subject_for(snapshot)
+    intro = (
+        "This manual alert is for the employee license below."
+        if kind == "license"
+        else "This manual alert is for the health checkup below."
+    )
+    sent_count = 0
+    errors = []
+    for user, address, sources in selected:
+        name = (user.full_name or user.username) if user is not None else "Recipient"
+        item = _history_item(kind, record, sources)
+        error_name = _deliver_alert(
+            "manual",
+            subject,
+            address,
+            user,
+            build_single_alert_html(snapshot, intro, name),
+            [item] if item else [],
+        )
+        if error_name:
+            errors.append(f"{address}: {error_name}")
+        else:
+            sent_count += 1
+    label = "license" if kind == "license" else "health checkup"
+    if sent_count and not errors:
+        log_event(
+            "ALERT_SENT",
+            f"Manual alert for employee {label} {record.id} "
+            f"(emp {employee.employee_code if employee else '-'}) "
+            f"sent to {sent_count} recipient(s).",
+            username_or_process="system",
+        )
+        return True, None, sent_count
+    error_text = "; ".join(errors) if errors else "Manual alert was not sent."
+    log_event(
+        "ALERT_FAILED",
+        f"Manual alert for employee {label} {record.id}: "
+        f"sent {sent_count}, issues: {error_text}"[:2000],
+        level="ERROR",
+        username_or_process="system",
+    )
+    return sent_count > 0, error_text, sent_count
+
+
