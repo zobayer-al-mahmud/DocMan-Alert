@@ -34,6 +34,8 @@ TESTS = [
     "test_delete_and_audit.py",
     "test_license_import.py",
     "test_ec_alert_logic.py",
+    "test_employee_alerts.py",
+    "test_dashboard_vehicle_section.py",
 ]
 
 

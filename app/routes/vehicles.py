@@ -661,6 +661,118 @@ def dashboard():
     )
 
 
+def vehicle_dashboard_overview(attention_limit=12):
+    """Fleet-wide vehicle-document stats for the main (Super Admin) dashboard's
+    Vehicle Documents section.
+
+    The vehicle module is a centralized asset list (see _apply_vehicle_scope),
+    so this is intentionally not factory-scoped: it counts the whole active
+    fleet exactly like vehicles.dashboard() above, which keeps the two views
+    reconciled. Returns a plain dict the dashboard template renders.
+    """
+    status_q = (
+        db.session.query(VehicleDocument.status, db.func.count(VehicleDocument.id))
+        .join(Vehicle, VehicleDocument.vehicle_id == Vehicle.id)
+        .filter(Vehicle.is_active.is_(True), VehicleDocument.is_active.is_(True))
+        .group_by(VehicleDocument.status)
+    )
+    status_counts = {s: 0 for s in ALL_STATUSES}
+    for status, count in status_q.all():
+        status_counts[status] = status_counts.get(status, 0) + count
+
+    total_vehicles = Vehicle.query.filter(Vehicle.is_active.is_(True)).count()
+
+    attention_vehicle_ids = {
+        row[0] for row in db.session.query(VehicleDocument.vehicle_id)
+        .join(Vehicle, VehicleDocument.vehicle_id == Vehicle.id)
+        .filter(Vehicle.is_active.is_(True),
+                VehicleDocument.is_active.is_(True),
+                VehicleDocument.status.in_(ATTENTION_STATUSES))
+        .distinct()
+    }
+    compliant_vehicles = total_vehicles - len(attention_vehicle_ids)
+
+    has_tax_token = {
+        row[0] for row in db.session.query(VehicleDocument.vehicle_id)
+        .join(Vehicle, VehicleDocument.vehicle_id == Vehicle.id)
+        .filter(Vehicle.is_active.is_(True),
+                VehicleDocument.doc_type == "tax_token",
+                VehicleDocument.is_active.is_(True))
+        .distinct()
+    }
+    missing_required = total_vehicles - len(has_tax_token)
+
+    # Factory-wise document breakdown (total / compliant / expiring / expired).
+    breakdown_rows = (
+        db.session.query(
+            Vehicle.factory_id, Factory.name,
+            VehicleDocument.status, db.func.count(VehicleDocument.id),
+        )
+        .join(Vehicle, VehicleDocument.vehicle_id == Vehicle.id)
+        .outerjoin(Factory, Vehicle.factory_id == Factory.id)
+        .filter(Vehicle.is_active.is_(True), VehicleDocument.is_active.is_(True))
+        .group_by(Vehicle.factory_id, Factory.name, VehicleDocument.status)
+        .all()
+    )
+    breakdown = {}
+    for factory_id, name, status, count in breakdown_rows:
+        row = breakdown.setdefault(factory_id, {
+            "name": name or "— Unmapped / Personal —",
+            "total": 0, "compliant": 0, "expiring": 0, "expired": 0,
+        })
+        row["total"] += count
+        if status == STATUS_EXPIRED:
+            row["expired"] += count
+        elif status in EXPIRING_STATUSES:
+            row["expiring"] += count
+        else:
+            row["compliant"] += count
+    factory_stats = sorted(breakdown.values(), key=lambda r: -r["total"])
+
+    # Documents needing attention (expiring + expired), most overdue first.
+    attn_rows = (
+        db.session.query(VehicleDocument, Vehicle)
+        .join(Vehicle, VehicleDocument.vehicle_id == Vehicle.id)
+        .options(joinedload(Vehicle.factory).joinedload(Factory.company),
+                 joinedload(Vehicle.company))
+        .filter(Vehicle.is_active.is_(True),
+                VehicleDocument.is_active.is_(True),
+                VehicleDocument.status.in_(ATTENTION_STATUSES),
+                VehicleDocument.expiry_date.isnot(None))
+        .order_by(VehicleDocument.expiry_date.asc())
+        .limit(attention_limit).all()
+    )
+    attention = []
+    for doc, veh in attn_rows:
+        if veh.company:
+            owner = veh.company.name
+        elif veh.factory and veh.factory.company:
+            owner = veh.factory.company.name
+        else:
+            owner = veh.owner_name_raw or "—"
+        attention.append({
+            "registration": veh.registration_no,
+            "owner": owner,
+            "doc_label": VEHICLE_DOC_LABELS.get(doc.doc_type, doc.doc_type),
+            "expiry": doc.expiry_date,
+            "status": doc.status,
+            "url": url_for("vehicles.view_vehicle", vehicle_id=veh.id),
+        })
+
+    return {
+        "total_vehicles": total_vehicles,
+        "compliant_vehicles": compliant_vehicles,
+        "expired_docs": status_counts.get(STATUS_EXPIRED, 0),
+        "missing_required": missing_required,
+        "expiring_7": status_counts.get("Expiring in 7 Days", 0),
+        "expiring_30": status_counts.get("Expiring in 30 Days", 0),
+        "expiring_60": status_counts.get("Expiring in 60 Days", 0),
+        "expiring_90": status_counts.get("Expiring in 90 Days", 0),
+        "factory_stats": factory_stats,
+        "attention": attention,
+    }
+
+
 # --- Manual Send Alert ------------------------------------------------------
 
 @vehicles_bp.route("/<int:vehicle_id>/docs/<doc_type>/send-alert", methods=["GET", "POST"])

@@ -141,8 +141,20 @@ def dashboard():
     ))
     attention_items = attention_items[:12]
 
+    # ---- Vehicle documents -------------------------------------------------
+    # The vehicle module is a centralized asset list (not factory-scoped), so
+    # the section mirrors the dedicated vehicle dashboard. Shown only to roles
+    # allowed to view vehicles (Super Admin, Administration, Factory Admin,
+    # Compliance Manager; Transport roles are redirected to their own board
+    # above). Imported locally to avoid a blueprint import cycle.
+    from app.routes.vehicles import vehicle_dashboard_overview, VIEW_ROLES as VEHICLE_VIEW_ROLES
+    vehicle_overview = None
+    if current_user.role.name in VEHICLE_VIEW_ROLES:
+        vehicle_overview = vehicle_dashboard_overview()
+
     return render_template(
         "dashboard.html",
+        vehicle_overview=vehicle_overview,
         total_documents=total_documents,
         valid_count=valid_count,
         expiring_count=expiring_count,

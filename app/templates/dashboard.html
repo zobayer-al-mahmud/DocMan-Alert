@@ -50,6 +50,96 @@
 </div>
 {% endif %}
 
+{% if vehicle_overview %}
+<h5 class="section-heading mb-2">Vehicle Documents</h5>
+<div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3">
+        <div class="stat-card"><div class="stat-label">Total Vehicles</div><div class="stat-value">{{ vehicle_overview.total_vehicles }}</div></div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="stat-card stat-success"><div class="stat-label">Compliant Vehicles</div><div class="stat-value">{{ vehicle_overview.compliant_vehicles }}</div></div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="stat-card stat-danger"><div class="stat-label">Expired Documents</div><div class="stat-value">{{ vehicle_overview.expired_docs }}</div></div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="stat-card stat-danger"><div class="stat-label">Missing Required Documents</div><div class="stat-value">{{ vehicle_overview.missing_required }}</div></div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="stat-card stat-danger"><div class="stat-label">Expiring in 7 Days</div><div class="stat-value">{{ vehicle_overview.expiring_7 }}</div></div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="stat-card stat-warning"><div class="stat-label">Expiring in 30 Days</div><div class="stat-value">{{ vehicle_overview.expiring_30 }}</div></div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="stat-card stat-warning"><div class="stat-label">Expiring in 60 Days</div><div class="stat-value">{{ vehicle_overview.expiring_60 }}</div></div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="stat-card stat-warning"><div class="stat-label">Expiring in 90 Days</div><div class="stat-value">{{ vehicle_overview.expiring_90 }}</div></div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-lg-7">
+        <div class="card">
+            <div class="card-header">Factory-wise Vehicle Status</div>
+            <div class="card-body p-0">
+                <table class="table mb-0">
+                    <thead>
+                        <tr><th>Factory</th><th>Total</th><th>Compliant</th><th>Expiring</th><th>Expired</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for f in vehicle_overview.factory_stats %}
+                        <tr>
+                            <td>{{ f.name }}</td>
+                            <td>{{ f.total }}</td>
+                            <td class="text-success">{{ f.compliant }}</td>
+                            <td class="text-warning">{{ f.expiring }}</td>
+                            <td class="text-danger">{{ f.expired }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="5" class="text-center text-muted py-4">No vehicle documents yet.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-5">
+        <div class="card">
+            <div class="card-header">Vehicle Documents Needing Attention</div>
+            <div class="card-body p-0">
+                <table class="table mb-0">
+                    <thead>
+                        <tr><th>Vehicle</th><th>Owner / Company</th><th>Document</th><th>Expiry</th><th>Status</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for item in vehicle_overview.attention %}
+                        <tr>
+                            <td>{% if item.url %}<a href="{{ item.url }}">{{ item.registration }}</a>{% else %}{{ item.registration }}{% endif %}</td>
+                            <td>{{ item.owner }}</td>
+                            <td>{{ item.doc_label }}</td>
+                            <td>{{ item.expiry or '-' }}</td>
+                            <td>
+                                {% if item.status == "Expired" %}
+                                    <span class="badge-status badge-expired">Expired</span>
+                                {% else %}
+                                    <span class="badge-status badge-expiring-30">{{ item.status }}</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="5" class="text-center text-muted py-4">No vehicle documents need attention.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <div class="row g-3">
     <div class="col-lg-7">
         <div class="card">
