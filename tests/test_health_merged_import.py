@@ -59,9 +59,9 @@ def build_merged(path, factory_name):
     # Data rows (6+). Two people share short ID "034" but differ by F ID.
     rows = [
         # F ID,       ID,   NAME,            SEC, DESG, DOJ,                 AGE, Factory, Mode, CBCr, CBCe, HWr, HWe, CXr, CXe, URr, URe, PRE, CENTER
-        ["GSCS034", "034", "PERSON ONE", "SPOT", "JR", datetime(2016,10,13), "29", "AGLX", None,
+        ["ZZHMA034", "034", "PERSON ONE", "SPOT", "JR", datetime(2016,10,13), "29", "AGLX", None,
          datetime(2026,8,22), datetime(2027,8,21), None, datetime(2027,8,21), None, None, None, None, None, "Checkup Point"],
-        ["AGWP034", "034", "PERSON TWO", "WASH", "SR", datetime(2018,1,1), "31", "AGLX", None,
+        ["ZZHMB034", "034", "PERSON TWO", "WASH", "SR", datetime(2018,1,1), "31", "AGLX", None,
          None, None, datetime(2026,9,1), datetime(2027,9,1), time(0, 0), None, None, None, None, None],
         # Blank row (should be skipped)
         [None]*19,
@@ -98,13 +98,13 @@ with app.app_context():
     check(len(errors) == 0, f"no errors ({errors})")
     check(len(parsed) == 2, f"2 data rows parsed, blank skipped (got {len(parsed)})")
     codes = sorted(p["employee"]["employee_code"] for p in parsed)
-    check(codes == ["AGWP034", "GSCS034"], f"F ID used as code, not short ID (got {codes})")
+    check(codes == ["ZZHMA034", "ZZHMB034"], f"F ID used as code, not short ID (got {codes})")
     # Person one: CBC (report+expire) + Hearing (expire only) = 2 exams
-    p1 = next(p for p in parsed if p["employee"]["employee_code"] == "GSCS034")
+    p1 = next(p for p in parsed if p["employee"]["employee_code"] == "ZZHMA034")
     kinds1 = sorted(e["exam_type"] for e in p1["exams"])
     check(kinds1 == ["CBC", "Hearing / Widal"], f"person one exams {kinds1}")
     # Person two: Hearing only (the Chest report cell is a stray time -> blank)
-    p2 = next(p for p in parsed if p["employee"]["employee_code"] == "AGWP034")
+    p2 = next(p for p in parsed if p["employee"]["employee_code"] == "ZZHMB034")
     kinds2 = sorted(e["exam_type"] for e in p2["exams"])
     check(kinds2 == ["Hearing / Widal"], f"person two: stray time ignored, only Hearing ({kinds2})")
 
@@ -118,7 +118,7 @@ with app.app_context():
           f"idempotent re-run ({summary2})")
 
     # cleanup
-    for e in Employee.query.filter(Employee.employee_code.in_(["GSCS034", "AGWP034"])).all():
+    for e in Employee.query.filter(Employee.employee_code.in_(["ZZHMA034", "ZZHMB034"])).all():
         if e.employee_code not in pre:
             db.session.delete(e)
     db.session.commit()
