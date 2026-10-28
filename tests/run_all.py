@@ -33,6 +33,7 @@ TESTS = [
     "test_health_merged_import.py",
     "test_delete_and_audit.py",
     "test_license_import.py",
+    "test_ec_alert_logic.py",
 ]
 
 

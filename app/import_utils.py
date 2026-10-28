@@ -52,24 +52,39 @@ def _norm(text):
     return re.sub(r"[^a-z0-9]", "", str(text or "").strip().lower())
 
 
+# Real compliance dates are all modern. Excel "empty-but-formatted-as-date"
+# cells surface as epoch artifacts (serial 0 -> 1899-12-30, small serials ->
+# 1900-xx-xx, e.g. the "1900-12-29" seen on health sheets). Anything before this
+# floor is a placeholder, not a real date, and must be treated as a blank cell
+# so phantom "Expired 1900" records are never created.
+_DATE_FLOOR = date(1950, 1, 1)
+
+
+def _bounded(parsed):
+    """Blank out sub-floor epoch placeholders; otherwise a real date."""
+    if parsed is None or parsed < _DATE_FLOOR:
+        return None, False, None
+    return parsed, False, None
+
+
 def parse_date(value):
     """Return (date|None, no_expiry: bool, error: str|None)."""
     if value is None:
         return None, False, None
     if isinstance(value, datetime):
-        return value.date(), False, None
+        return _bounded(value.date())
     # A bare time with no date (e.g. Excel cell holding 00:00:00) is not a real
     # expiry — treat it as blank rather than an error. Checked before `date`
     # because datetime is a subclass of date but time is not.
     if isinstance(value, time):
         return None, False, None
     if isinstance(value, date):
-        return value, False, None
+        return _bounded(value)
     if isinstance(value, (int, float)):
         # Excel serial date (1900 date system). Day 1 = 1900-01-01.
         try:
             base = datetime(1899, 12, 30)  # accounts for Excel's 1900 leap-year bug
-            return (base + timedelta(days=float(value))).date(), False, None
+            return _bounded((base + timedelta(days=float(value))).date())
         except Exception:
             return None, False, f"invalid date serial '{value}'"
     text = str(value).strip().translate(_BN_DIGITS)
@@ -78,7 +93,7 @@ def parse_date(value):
     for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%m/%d/%Y", "%d-%b-%Y", "%d %b %Y",
                 "%Y/%m/%d", "%d.%m.%Y", "%d.%m.%y"):
         try:
-            return datetime.strptime(text, fmt).date(), False, None
+            return _bounded(datetime.strptime(text, fmt).date())
         except ValueError:
             continue
     return None, False, f"unrecognized date '{text}'"
