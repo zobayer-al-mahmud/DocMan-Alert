@@ -31,6 +31,10 @@ DELETE_ROLES = (
 )
 # Bulk (multi-select) delete is Super Admin only.
 BULK_DELETE_ROLES = ("Super Admin",)
+# Deleting a whole employee removes every license, every checkup, every stored
+# file, and every alert dispatch for that person. Restricted to Super Admin and
+# Compliance Manager; narrower than per-record delete on purpose.
+EMPLOYEE_DELETE_ROLES = ("Super Admin", "Compliance Manager")
 # Who may fire a manual per-record alert email. Mirrors the Documents module's
 # gate — Compliance User can send, but the Transport roles and Compliance
 # Viewer cannot.
@@ -196,6 +200,7 @@ def list_employees():
         search=search,
         show_inactive=show_inactive,
         can_manage=current_user.role.name in MANAGE_ROLES,
+        can_delete_employee=current_user.role.name in EMPLOYEE_DELETE_ROLES,
     )
 
 
@@ -300,6 +305,61 @@ def view_employee(employee_id):
         can_delete=current_user.role.name in DELETE_ROLES,
         can_bulk_delete=current_user.role.name in BULK_DELETE_ROLES,
         can_alert=current_user.role.name in ALERT_ROLES,
+        can_delete_employee=current_user.role.name in EMPLOYEE_DELETE_ROLES,
+    )
+
+
+@employees_bp.route("/<int:employee_id>/delete", methods=["GET", "POST"])
+@login_required
+@roles_required(*EMPLOYEE_DELETE_ROLES)
+def delete_employee(employee_id):
+    """Permanently remove an employee, every license, every checkup, every
+    stored file, and every alert dispatch. The caller must retype the
+    employee's name to confirm (same safety as document delete)."""
+    employee = _get_employee_or_403(employee_id)
+    # Totals shown on the confirmation page (all records, including archived).
+    license_total = len(employee.compliances or [])
+    checkup_total = len(employee.health_checkups or [])
+    file_total = sum(
+        1 for lic in (employee.compliances or []) if lic.file_path
+    ) + sum(
+        len(lic.file_versions or []) for lic in (employee.compliances or [])
+    ) + sum(
+        1 for chk in (employee.health_checkups or []) if chk.file_path
+    ) + sum(
+        len(chk.file_versions or []) for chk in (employee.health_checkups or [])
+    )
+
+    if request.method == "POST":
+        typed = (request.form.get("confirm_name") or "").strip()
+        if typed != (employee.name or ""):
+            flash("Type the employee name exactly to confirm deletion.", "danger")
+            return render_template(
+                "employees/delete.html",
+                employee=employee,
+                license_total=license_total,
+                checkup_total=checkup_total,
+                file_total=file_total,
+            )
+        name, code, emp_id, lic_n, chk_n = _delete_employee_record(employee)
+        db.session.commit()
+        log_record(
+            "deleted", "Employee",
+            f"{name} ({code}, id {emp_id}) with "
+            f"{lic_n} license(s) and {chk_n} checkup(s)",
+        )
+        flash(
+            f"Employee {name} ({code}) and all {lic_n + chk_n} record(s) deleted.",
+            "success",
+        )
+        return redirect(url_for("employees.list_employees"))
+
+    return render_template(
+        "employees/delete.html",
+        employee=employee,
+        license_total=license_total,
+        checkup_total=checkup_total,
+        file_total=file_total,
     )
 
 
@@ -437,6 +497,26 @@ def _delete_checkup_record(record):
     record.alert_recipients = []
     db.session.delete(record)
     return label, rid
+
+
+def _delete_employee_record(employee):
+    """Remove one employee and every license, checkup, stored file, dispatch,
+    and alert-recipient link attached to them. Returns a counts tuple for the
+    audit log. Does not commit.
+    """
+    license_count = 0
+    checkup_count = 0
+    for lic in list(employee.compliances or []):
+        _delete_license_record(lic)
+        license_count += 1
+    for chk in list(employee.health_checkups or []):
+        _delete_checkup_record(chk)
+        checkup_count += 1
+    emp_id = employee.id
+    name = employee.name
+    code = employee.employee_code
+    db.session.delete(employee)
+    return name, code, emp_id, license_count, checkup_count
 
 
 @employees_bp.route("/license/<int:record_id>/archive", methods=["POST"])

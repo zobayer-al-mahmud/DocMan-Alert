@@ -51,6 +51,7 @@
             <td>
                 <a href="{{ url_for('employees.view_employee', employee_id=emp.id) }}" class="btn btn-sm btn-outline-secondary">Open</a>
                 {% if can_manage %}<a href="{{ url_for('employees.edit_employee', employee_id=emp.id) }}" class="btn btn-sm btn-secondary">Edit</a>{% endif %}
+                {% if can_delete_employee %}<a href="{{ url_for('employees.delete_employee', employee_id=emp.id) }}" class="btn btn-sm btn-outline-danger">Delete</a>{% endif %}
             </td>
         </tr>
         {% else %}

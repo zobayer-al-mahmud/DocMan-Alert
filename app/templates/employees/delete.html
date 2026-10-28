@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Delete employee{% endblock %}
+{% block page_title %}Delete employee{% endblock %}
+
+{% block content %}
+<p class="mb-3"><a href="{{ url_for('employees.view_employee', employee_id=employee.id) }}">&larr; Back to employee</a></p>
+
+<div class="card">
+    <div class="card-body">
+        <h5>Delete {{ employee.name }} <small class="text-muted">({{ employee.employee_code }})</small></h5>
+        <p class="text-muted mb-3">
+            Factory: <strong>{{ employee.factory.name if employee.factory else '-' }}</strong>
+            &middot; Department: <strong>{{ employee.department.name if employee.department else '-' }}</strong>
+        </p>
+
+        <div class="alert alert-danger">
+            This permanently removes the employee and every attached record and file:
+            <ul class="mb-0 mt-1">
+                <li><strong>{{ license_total }}</strong> license{{ '' if license_total == 1 else 's' }}
+                    (including any archived ones)</li>
+                <li><strong>{{ checkup_total }}</strong> health checkup{{ '' if checkup_total == 1 else 's' }}
+                    (including any archived ones)</li>
+                <li><strong>{{ file_total }}</strong> stored file{{ '' if file_total == 1 else 's' }}
+                    (current + all previous versions)</li>
+                <li>All scheduled-alert dedup rows for the above records</li>
+            </ul>
+            Alert History rows previously sent are kept for the audit trail. This cannot be undone.
+        </div>
+
+        <form method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label class="form-label" for="confirm_name">Type the employee name <code>{{ employee.name }}</code> to confirm</label>
+            <input class="form-control mb-3" id="confirm_name" name="confirm_name" autocomplete="off" required>
+            <button class="btn btn-danger" type="submit">Delete employee and all records</button>
+            <a href="{{ url_for('employees.view_employee', employee_id=employee.id) }}" class="btn btn-outline-secondary">Cancel</a>
+        </form>
+    </div>
+</div>
+{% endblock %}
