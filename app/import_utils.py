@@ -16,7 +16,7 @@ Design rules (see master spec section 19):
     - preview before final import
 """
 import re
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, time, timedelta
 
 from app import db
 from app.models import (
@@ -58,6 +58,11 @@ def parse_date(value):
         return None, False, None
     if isinstance(value, datetime):
         return value.date(), False, None
+    # A bare time with no date (e.g. Excel cell holding 00:00:00) is not a real
+    # expiry — treat it as blank rather than an error. Checked before `date`
+    # because datetime is a subclass of date but time is not.
+    if isinstance(value, time):
+        return None, False, None
     if isinstance(value, date):
         return value, False, None
     if isinstance(value, (int, float)):
@@ -110,6 +115,107 @@ def _read_rows(ws):
         return [], []
     header = [str(c).strip() if c is not None else "" for c in rows[0]]
     return header, rows[1:]
+
+
+_ID_HEADER_KEYS = {"id", "idno", "employeeid", "fid", "fidhide", "idno."}
+
+
+def _health_header_and_rows(ws):
+    """Flatten a health sheet's header and return (flat_header, data_rows).
+
+    Handles two real-world layouts:
+      * Flat single-row header (as the test fixtures use): the exam columns are
+        named e.g. "CBC Report", "CBC Expiry" on one row.
+      * Merged multi-row header (the Ananta "Health Checkup Summary" workbook):
+        title banner rows, then a main header row (ID / NAME / Factory / ...),
+        then an exam-name row (CBC, HEARING / Widal, ... each merged across its
+        REPORT/EXPIRE pair) and a "REPORT DATE / EXPIRE DATE" row.
+
+    For the merged layout the exam name is folded into each date column so the
+    result looks like "CBC REPORT DATE" / "CBC EXPIRE DATE", which the existing
+    exam-column matcher understands. Non-exam columns keep their main-header
+    name. Title/sub-header rows are stripped from the returned data rows.
+    """
+    all_rows = list(ws.iter_rows(values_only=True))
+    if not all_rows:
+        return [], []
+    width = max((len(r) for r in all_rows), default=0)
+
+    # Locate the main header row: has an ID-like column + Factory + Name.
+    main_i = None
+    for i in range(min(len(all_rows), 12)):
+        cells = [_norm(c) for c in all_rows[i]]
+        has_id = any(c in _ID_HEADER_KEYS for c in cells)
+        has_factory = any("factory" in c for c in cells if c)
+        has_name = any(c == "name" or c == "employeename" for c in cells)
+        if has_id and has_factory and has_name:
+            main_i = i
+            break
+    if main_i is None:
+        # No recognizable header; fall back to the first row as a flat header.
+        return [str(c).strip() if c is not None else "" for c in all_rows[0]], all_rows[1:]
+
+    main = list(all_rows[main_i])
+    id_col = next(
+        (ci for ci, c in enumerate(main) if _norm(c) in _ID_HEADER_KEYS), None
+    )
+
+    # Gather sub-header rows directly under the main header: rows whose ID
+    # column is empty and which carry exam-name / report-expire labels. Stop at
+    # the first real data row (ID column populated).
+    sub_rows = []
+    j = main_i + 1
+    while j < len(all_rows):
+        row = all_rows[j]
+        id_val = row[id_col] if (id_col is not None and id_col < len(row)) else None
+        if id_val not in (None, ""):
+            break
+        texts = [c for c in row if c not in (None, "")]
+        if not texts:
+            break
+        sub_rows.append(list(row))
+        j += 1
+        if len(sub_rows) >= 3:
+            break
+    data_rows = all_rows[j:]
+
+    if not sub_rows:
+        return [str(c).strip() if c is not None else "" for c in main], data_rows
+
+    def _re_score(row):
+        return sum(
+            1 for c in row
+            if c and ("report" in _norm(c) or "expire" in _norm(c) or "expiry" in _norm(c))
+        )
+
+    report_row = max(sub_rows, key=_re_score)
+    name_rows = [r for r in sub_rows if r is not report_row]
+
+    # Forward-fill exam-name rows so merged-away cells inherit the exam name.
+    filled_name_rows = []
+    for nr in name_rows:
+        filled, last = [], ""
+        for ci in range(width):
+            val = nr[ci] if ci < len(nr) else None
+            if val not in (None, ""):
+                last = str(val).strip()
+            filled.append(last)
+        filled_name_rows.append(filled)
+
+    header = []
+    for ci in range(width):
+        rep_val = report_row[ci] if ci < len(report_row) else None
+        if rep_val not in (None, ""):
+            exam_name = ""
+            for fr in filled_name_rows:
+                if fr[ci]:
+                    exam_name = fr[ci]
+                    break
+            header.append(f"{exam_name} {str(rep_val).strip()}".strip())
+        else:
+            main_val = main[ci] if ci < len(main) else None
+            header.append(str(main_val).strip() if main_val is not None else "")
+    return header, data_rows
 
 
 def _header_index(header, *aliases):
@@ -264,8 +370,14 @@ def parse_workbook(ws, import_type, factory_lookup):
             })
 
     elif import_type == "health":
+        # Health sheets may carry a merged multi-row header (title banner + exam
+        # groups). Re-derive a flattened header and the true data rows.
+        header, data_rows = _health_header_and_rows(ws)
         idx = {
-            "code": _header_index(header, "Employee ID", "ID No", "ID"),
+            # Prefer the globally-unique "F ID (Hide)" over the short "ID" (the
+            # short ID collides within a factory for distinct people).
+            "code": _header_index(header, "F ID (Hide)", "F ID", "FID",
+                                  "Employee ID", "ID No", "ID"),
             "name": _header_index(header, "Name", "Employee Name"),
             "section": _header_index(header, "Section"),
             "designation": _header_index(header, "Designation"),
@@ -280,10 +392,14 @@ def parse_workbook(ws, import_type, factory_lookup):
             report_i = expiry_i = None
             for i, h in enumerate(header):
                 nh = _norm(h)
-                if key in nh and ("report" in nh or "date" in nh):
-                    report_i = i
-                elif key in nh and "expiry" in nh:
+                if key not in nh:
+                    continue
+                # Check expiry first: "EXPIRE DATE" also contains "date", so it
+                # must not be mistaken for the report column.
+                if "expiry" in nh or "expire" in nh:
                     expiry_i = i
+                elif "report" in nh or "date" in nh:
+                    report_i = i
             exam_cols[label] = (report_i, expiry_i)
 
         missing = [k for k in ("code", "name", "factory") if idx[k] is None]
