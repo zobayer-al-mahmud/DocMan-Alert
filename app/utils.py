@@ -10,8 +10,8 @@ from flask_mail import Message
 from app import db, mail
 from app.models import (
     AlertDispatch, Document, Employee, EmployeeCompliance, HealthCheckup, SystemLog,
-    User, VehicleDocument, company_alert_recipients, department_alert_recipients,
-    AlertEmail, AlertEmailItem,
+    User, VehicleDocument, Audit, company_alert_recipients, department_alert_recipients,
+    AlertEmail, AlertEmailItem, AUDIT_NO_VALIDITY,
 )
 
 
@@ -328,13 +328,38 @@ def _recalc_model(model):
     return changed
 
 
+def _recalc_audits():
+    """Recompute audit status from validity_date. Audits with no validity get
+    the AUDIT_NO_VALIDITY sentinel so they never count as expiring/expired."""
+    today = bst_today()
+    changed = False
+    buckets = [
+        (AUDIT_NO_VALIDITY, Audit.validity_date.is_(None)),
+        (STATUS_EXPIRED, db.and_(Audit.validity_date.isnot(None), Audit.validity_date <= today)),
+        (STATUS_7, db.and_(Audit.validity_date > today, Audit.validity_date <= today + timedelta(days=7))),
+        (STATUS_30, db.and_(Audit.validity_date > today + timedelta(days=7), Audit.validity_date <= today + timedelta(days=30))),
+        (STATUS_60, db.and_(Audit.validity_date > today + timedelta(days=30), Audit.validity_date <= today + timedelta(days=60))),
+        (STATUS_90, db.and_(Audit.validity_date > today + timedelta(days=60), Audit.validity_date <= today + timedelta(days=90))),
+        (STATUS_VALID, Audit.validity_date > today + timedelta(days=90)),
+    ]
+    for target_status, condition in buckets:
+        result = Audit.query.filter(condition, Audit.status != target_status).update(
+            {"status": target_status}, synchronize_session=False
+        )
+        if result:
+            changed = True
+    return changed
+
+
 def recalculate_all_statuses():
     """Recompute statuses for documents, employee licenses, health checkups,
-    and vehicle documents."""
+    vehicle documents, and compliance audits."""
     changed = False
     for model in (Document, EmployeeCompliance, HealthCheckup, VehicleDocument):
         if _recalc_model(model):
             changed = True
+    if _recalc_audits():
+        changed = True
     if changed:
         db.session.commit()
 
@@ -478,6 +503,14 @@ def _record_scope(record, kind):
             db.func.lower(Department.name) == "transport"
         ).first()
         return factory, transport_dept, company_id
+    if kind == "audit":
+        from app.models import Department
+        factory = record.factories[0] if getattr(record, "factories", None) else None
+        company_id = factory.company_id if factory else None
+        compliance_dept = Department.query.filter(
+            db.func.lower(Department.name) == "compliance"
+        ).first()
+        return factory, compliance_dept, company_id
     employee = getattr(record, "employee", None)
     factory = employee.factory if employee else None
     company_id = factory.company_id if factory else None
@@ -502,6 +535,9 @@ def resolve_alert_recipients(record, kind, index=None, skipped=None):
         # Vehicles have no department-recipient model; use the dedicated
         # resolver that routes to Transport-role users + Transport mailbox.
         return resolve_vehicle_alert_recipients(record, skipped=skipped)
+    if kind == "audit":
+        # Audits route to the Compliance team + Compliance group mailbox.
+        return resolve_audit_alert_recipients(record, skipped=skipped)
     factory, department, company_id = _record_scope(record, kind)
     factory_id = factory.id if factory else None
     department_id = department.id if department else None
@@ -631,12 +667,35 @@ def record_snapshot(record, kind):
     alert_status = compute_status(expiry, no_expiry)
 
     vehicle_details = {}
+    audit_details = {}
+    if kind == "audit":
+        # Audit status is the stored column (AUDIT_NO_VALIDITY for one-time
+        # audits); do not recompute to "Valid" from a null validity date.
+        alert_status = record.status or alert_status
     if kind == "document":
         title = record.doc_name or "Document"
         doc_type = (record.doc_type or "").strip()
         issue_date = record.issue_date
         certificate = (record.cert_no or "").strip()
         subject_label = (record.doc_type or "Document").strip() or "Document"
+    elif kind == "audit":
+        title = (record.audit_name or "Audit").strip() or "Audit"
+        doc_type = (record.audit_type or "").strip()
+        issue_date = record.date_start
+        certificate = (record.reference_id or "").strip()
+        subject_label = f"{title} Audit"
+        audit_details = {
+            "audited_by": (record.audited_by or "").strip(),
+            "auditor_name": (record.auditor_name or "").strip(),
+            "buyer": (record.buyer or "").strip(),
+            "announcement_type": (record.announcement_type or "").strip(),
+            "monitoring_type": (record.monitoring_type or "").strip(),
+            "factory_raw": (record.factory_raw or "").strip(),
+            "rating": (record.rating or "").strip(),
+            "cost": (record.cost or "").strip(),
+            "date_start": record.date_start,
+            "date_end": record.date_end,
+        }
     elif kind == "vehicle":
         from app.models import VEHICLE_DOC_LABELS
         vehicle = record.vehicle
@@ -694,6 +753,7 @@ def record_snapshot(record, kind):
         "status": alert_status,
         "days": None if no_expiry else days_remaining(expiry),
         **vehicle_details,
+        **audit_details,
     }
 
 
@@ -791,9 +851,50 @@ def _vehicle_rows_html(snapshot):
     )
 
 
+def _audit_rows_html(snapshot):
+    """Audit alert body: every stored audit field, 'Not recorded' when blank."""
+    def text(key):
+        return (str(snapshot.get(key) or "").strip()) or NOT_RECORDED
+
+    def scoped(key):
+        value = snapshot.get(key)
+        return value if value and value != "-" else NOT_RECORDED
+
+    has_validity = bool(snapshot.get("no_expiry") or snapshot.get("expiry"))
+    start = snapshot.get("date_start")
+    end = snapshot.get("date_end")
+    date_range = _fmt_date(start)
+    if end and end != start:
+        date_range = f"{_fmt_date(start)} to {_fmt_date(end)}"
+    fields = [
+        ("Audit Name", text("title")),
+        ("Audit Type", text("doc_type")),
+        ("Audit Date", date_range if start else NOT_RECORDED),
+        ("Audited By", text("audited_by")),
+        ("Auditor Name", text("auditor_name")),
+        ("Buyer", text("buyer")),
+        ("Reference / ID", text("certificate")),
+        ("Announcement Type", text("announcement_type")),
+        ("Monitoring Type", text("monitoring_type")),
+        ("Factory", text("factory_raw")),
+        ("Company", scoped("company")),
+        ("Rating", text("rating")),
+        ("Validity (expiry)", _expiry_label(snapshot) if has_validity else "No expiry"),
+        ("Remaining", _remaining_label(snapshot) if snapshot.get("expiry") else NOT_RECORDED),
+        ("Status", text("status")),
+        ("Cost", text("cost")),
+    ]
+    return "".join(
+        f"<strong>{html.escape(label)}:</strong> {html.escape(str(value))}<br>"
+        for label, value in fields
+    )
+
+
 def _snapshot_rows_html(snapshot):
     if snapshot.get("kind") == "vehicle":
         return _vehicle_rows_html(snapshot)
+    if snapshot.get("kind") == "audit":
+        return _audit_rows_html(snapshot)
     rows = []
     for label, key, optional, kind in _SNAPSHOT_FIELDS:
         if kind == "expiry":
@@ -834,10 +935,18 @@ VEHICLE_ROUTING_NOTE = (
 )
 
 
+AUDIT_ROUTING_NOTE = (
+    "It goes to the Compliance team and the Compliance group mailbox."
+)
+
+
 def scheduled_intro(snapshot, label):
     """Intro line for scheduled alerts; vehicles use their own routing text."""
     if snapshot.get("kind") == "vehicle":
         return f"Scheduled {label} alert for this vehicle document. {VEHICLE_ROUTING_NOTE}"
+    if snapshot.get("kind") == "audit":
+        return (f"Scheduled {label} alert: the certificate validity for this audit "
+                f"is expiring or has expired. {AUDIT_ROUTING_NOTE}")
     return (
         f"Scheduled {label} alert for this document. "
         "It goes to the assigned person, or to the document's department, "
@@ -925,6 +1034,12 @@ def _alert_load_options(kind):
         return (
             joinedload(VehicleDocument.vehicle).joinedload(Vehicle.factory).joinedload(Factory.company),
             joinedload(VehicleDocument.vehicle).joinedload(Vehicle.creator).joinedload(User.role),
+        )
+    if kind == "audit":
+        return (
+            selectinload(Audit.factories).joinedload(Factory.company),
+            selectinload(Audit.alert_recipients).joinedload(User.role),
+            joinedload(Audit.creator).joinedload(User.role),
         )
     return (
         joinedload(HealthCheckup.employee).joinedload(Employee.factory).joinedload(Factory.company),
@@ -1023,6 +1138,7 @@ def _bucket_records(records_by_kind, index, skipped):
                     "license": [],
                     "checkup": [],
                     "vehicle": [],
+                    "audit": [],
                 })
                 if bucket["user"] is None and person["user"] is not None:
                     bucket["user"] = person["user"]
@@ -1042,7 +1158,7 @@ def _bucket_items(bucket):
     return records, items
 
 
-def send_compliance_alert(documents=None, licenses=None, checkups=None, vehicles=None):
+def send_compliance_alert(documents=None, licenses=None, checkups=None, vehicles=None, audits=None):
     """Send the Saturday summary for 90/60/30-day records.
 
     Each record goes to its assigned people, or to the department, or to the
@@ -1056,13 +1172,14 @@ def send_compliance_alert(documents=None, licenses=None, checkups=None, vehicles
     Returns (sent: bool, error: str|None, total_count: int).
     """
     queried = (documents is None and licenses is None
-               and checkups is None and vehicles is None)
+               and checkups is None and vehicles is None and audits is None)
     if queried:
         recalculate_all_statuses()
         documents = _load_attention(Document, NORMAL_ALERT_STATUSES, "document")
         licenses = _load_attention(EmployeeCompliance, NORMAL_ALERT_STATUSES, "license")
         checkups = _load_attention(HealthCheckup, NORMAL_ALERT_STATUSES, "checkup")
         vehicles = _load_attention(VehicleDocument, NORMAL_ALERT_STATUSES, "vehicle")
+        audits = _load_attention(Audit, NORMAL_ALERT_STATUSES, "audit")
     else:
         # Explicit record lists are still filtered to the weekly buckets
         # (90 / 60 / 30 days). Classification is computed from the current
@@ -1082,8 +1199,9 @@ def send_compliance_alert(documents=None, licenses=None, checkups=None, vehicles
             v for v in (vehicles or [])
             if _in_weekly(v) and getattr(getattr(v, "vehicle", None), "is_active", True)
         ]
+        audits = [a for a in (audits or []) if _in_weekly(a) and a.is_active]
 
-    total_count = len(documents) + len(licenses) + len(checkups) + len(vehicles)
+    total_count = len(documents) + len(licenses) + len(checkups) + len(vehicles) + len(audits)
     if total_count == 0:
         return False, None, 0
 
@@ -1091,7 +1209,7 @@ def send_compliance_alert(documents=None, licenses=None, checkups=None, vehicles
     skipped = []
     buckets = _bucket_records(
         (("document", documents), ("license", licenses),
-         ("checkup", checkups), ("vehicle", vehicles)),
+         ("checkup", checkups), ("vehicle", vehicles), ("audit", audits)),
         index,
         skipped,
     )
@@ -1101,7 +1219,7 @@ def send_compliance_alert(documents=None, licenses=None, checkups=None, vehicles
     errors = []
     for email in sorted(buckets):
         bucket = buckets[email]
-        for kind in ("document", "license", "checkup", "vehicle"):
+        for kind in ("document", "license", "checkup", "vehicle", "audit"):
             for record, sources in bucket[kind]:
                 snapshot = record_snapshot(record, kind)
                 subject = weekly_subject_for(snapshot)
@@ -1175,7 +1293,7 @@ def _existing_dispatches(records_by_kind):
     return found
 
 
-def send_emergency_alerts(documents=None, licenses=None, checkups=None, vehicles=None):
+def send_emergency_alerts(documents=None, licenses=None, checkups=None, vehicles=None, audits=None):
     """Send urgent alerts for 7-day and expired records, once per threshold.
 
     The same record and expiry are not emailed again for the same status.
@@ -1185,12 +1303,13 @@ def send_emergency_alerts(documents=None, licenses=None, checkups=None, vehicles
     Returns (sent: bool, error: str|None, newly_alerted_count: int).
     """
     queried = (documents is None and licenses is None
-               and checkups is None and vehicles is None)
+               and checkups is None and vehicles is None and audits is None)
     if queried:
         documents = _load_attention(Document, EMERGENCY_STATUSES, "document")
         licenses = _load_attention(EmployeeCompliance, EMERGENCY_STATUSES, "license")
         checkups = _load_attention(HealthCheckup, EMERGENCY_STATUSES, "checkup")
         vehicles = _load_attention(VehicleDocument, EMERGENCY_STATUSES, "vehicle")
+        audits = _load_attention(Audit, EMERGENCY_STATUSES, "audit")
     else:
         documents = documents or []
         licenses = licenses or []
@@ -1200,9 +1319,10 @@ def send_emergency_alerts(documents=None, licenses=None, checkups=None, vehicles
             v for v in (vehicles or [])
             if getattr(getattr(v, "vehicle", None), "is_active", True)
         ]
+        audits = [a for a in (audits or []) if a.is_active]
 
     groups = (("document", documents), ("license", licenses),
-              ("checkup", checkups), ("vehicle", vehicles))
+              ("checkup", checkups), ("vehicle", vehicles), ("audit", audits))
     already = _existing_dispatches(groups)
     index = RecipientIndex.load()
     skipped = []
@@ -1635,3 +1755,238 @@ def send_manual_employee_record_alert(record, kind, users, group_emails=None):
     return sent_count > 0, error_text, sent_count
 
 
+
+
+# ---------------------------------------------------------------------------
+# Compliance Audit alerts
+# ---------------------------------------------------------------------------
+
+# How many days ahead an upcoming (scheduled) audit triggers a reminder.
+AUDIT_UPCOMING_WINDOW_DAYS = 14
+
+
+def resolve_audit_alert_recipients(audit, skipped=None):
+    """Recipients for a compliance-audit alert.
+
+    Routes to:
+      - The audit's own assigned alert_recipients (record-specific).
+      - Active Compliance-role users (Manager/User/Viewer) whose factory matches
+        a linked factory, or who have Global Access (factory_id IS NULL). When
+        the audit has no linked factory, all active Compliance users are used.
+      - The audit creator (if active, valid email).
+      - The Compliance department group mailbox.
+
+    Returns [{user, email, sources}, ...] de-duplicated by email.
+    """
+    from app.models import Department, Role
+    found = {}
+
+    def consider(user, source):
+        if user is None or not user.is_active:
+            return
+        if not valid_email(user.email):
+            if skipped is not None:
+                skipped.append({"username": user.username or "user",
+                                "reason": "Invalid or missing email"})
+            return
+        key = user.email.strip().lower()
+        slot = found.setdefault(key, {"user": user, "email": user.email.strip(), "sources": []})
+        if source not in slot["sources"]:
+            slot["sources"].append(source)
+
+    linked_ids = {f.id for f in (audit.factories or [])}
+
+    # Record-specific recipients first.
+    for user in list(audit.alert_recipients or []):
+        consider(user, SOURCE_RECORD)
+
+    # Compliance-role users matched by factory / global access.
+    role_ids = [r.id for r in Role.query.filter(
+        Role.name.in_(("Compliance Manager", "Compliance User", "Compliance Viewer"))
+    ).all()]
+    if role_ids:
+        for user in User.query.filter(User.is_active.is_(True), User.role_id.in_(role_ids)).all():
+            if not linked_ids or user.factory_id is None or user.factory_id in linked_ids:
+                consider(user, SOURCE_DEPARTMENT)
+
+    # Creator.
+    creator = audit.creator
+    if creator is None and getattr(audit, "created_by", None):
+        creator = db.session.get(User, audit.created_by)
+    consider(creator, SOURCE_UPLOADER)
+
+    # Compliance department group mailbox.
+    compliance_dept = Department.query.filter(
+        db.func.lower(Department.name) == "compliance"
+    ).first()
+    for email in department_group_emails(compliance_dept):
+        key = email.lower()
+        slot = found.setdefault(key, {"user": None, "email": email, "sources": []})
+        if SOURCE_GROUP not in slot["sources"]:
+            slot["sources"].append(SOURCE_GROUP)
+
+    rows = list(found.values())
+    for row in rows:
+        row["sources"] = [name for name in SOURCE_ORDER if name in row["sources"]]
+    return rows
+
+
+def send_manual_audit_alert(audit, users, group_emails=None):
+    """Email the selected users and group mailboxes for one audit. The caller
+    validates that users/group_emails come from resolve_audit_alert_recipients."""
+    selected = []
+    seen = set()
+    for user in users or []:
+        if user is None or not user.is_active or not valid_email(user.email):
+            continue
+        address = user.email.strip()
+        key = address.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        selected.append((user, address, [SOURCE_RECORD]))
+    if group_emails is None:
+        from app.models import Department
+        compliance_dept = Department.query.filter(
+            db.func.lower(Department.name) == "compliance"
+        ).first()
+        group_emails = department_group_emails(compliance_dept)
+    for address in group_emails or []:
+        if not valid_email(address):
+            continue
+        clean = address.strip()
+        key = clean.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        selected.append((None, clean, [SOURCE_GROUP]))
+    if not selected:
+        return False, "No valid recipients to send to.", 0
+
+    snapshot = record_snapshot(audit, "audit")
+    subject = manual_subject_for(snapshot)
+    intro = "This manual alert is for the compliance audit below."
+    sent_count = 0
+    errors = []
+    for user, address, sources in selected:
+        name = (user.full_name or user.username) if user is not None else "Recipient"
+        item = _history_item("audit", audit, sources)
+        error_name = _deliver_alert(
+            "manual", subject, address, user,
+            build_single_alert_html(snapshot, intro, name),
+            [item] if item else [],
+        )
+        if error_name:
+            errors.append(f"{address}: {error_name}")
+        else:
+            sent_count += 1
+    if sent_count and not errors:
+        log_event(
+            "ALERT_SENT",
+            f"Manual alert for audit {audit.id} ({audit.audit_name}) "
+            f"sent to {sent_count} recipient(s).",
+            username_or_process="system",
+        )
+        return True, None, sent_count
+    error_text = "; ".join(errors) if errors else "Manual alert was not sent."
+    log_event(
+        "ALERT_FAILED",
+        f"Manual alert for audit {audit.id}: sent {sent_count}, issues: {error_text}"[:2000],
+        level="ERROR", username_or_process="system",
+    )
+    return sent_count > 0, error_text, sent_count
+
+
+def send_upcoming_audit_reminders():
+    """Remind the Compliance team of audits scheduled within the next
+    AUDIT_UPCOMING_WINDOW_DAYS. One reminder per audit per scheduled start date
+    (a rescheduled audit with a new start date reminds again).
+
+    Returns (sent: bool, error: str|None, count: int).
+    """
+    today = bst_today()
+    window_end = today + timedelta(days=AUDIT_UPCOMING_WINDOW_DAYS)
+    audits = Audit.query.options(*_alert_load_options("audit")).filter(
+        Audit.is_active.is_(True),
+        Audit.date_start.isnot(None),
+        Audit.date_start >= today,
+        Audit.date_start <= window_end,
+    ).order_by(Audit.date_start).all()
+    if not audits:
+        return False, None, 0
+
+    ids = [a.id for a in audits]
+    already = set()
+    if ids:
+        for row in AlertDispatch.query.filter(
+            AlertDispatch.record_type == "audit",
+            AlertDispatch.alert_stage == "upcoming",
+            AlertDispatch.record_id.in_(ids),
+        ).all():
+            already.add((row.record_id, row.expiry_key))
+
+    skipped = []
+    pending = []
+    for audit in audits:
+        key = audit.date_start.isoformat()
+        if (audit.id, key) in already:
+            continue
+        recipients = resolve_audit_alert_recipients(audit, skipped=skipped)
+        if not recipients:
+            continue
+        snapshot = record_snapshot(audit, "audit")
+        days = (audit.date_start - today).days
+        when = "today" if days == 0 else ("in " + str(days) + (" day" if days == 1 else " days"))
+        intro = ("Reminder: the audit below is scheduled " + when + " ("
+                 + audit.date_start.strftime("%d-%b-%Y") + "). " + AUDIT_ROUTING_NOTE)
+        for person in recipients:
+            pending.append((
+                person["email"], person["user"], snapshot, intro,
+                (audit.id, key), _history_item("audit", audit, person["sources"]),
+            ))
+    _log_skipped(skipped, "Upcoming audit reminder")
+    if not pending:
+        return False, None, 0
+
+    sent_count = 0
+    errors = []
+    delivered = set()
+    for email, user, snapshot, intro, marker, history_item in pending:
+        subject = "Upcoming Audit: " + str(snapshot["title"]) + " (" + str(snapshot.get("date_start")) + ")"
+        error_name = _deliver_alert(
+            "upcoming", subject, email, user,
+            build_single_alert_html(snapshot, intro,
+                                    (user.full_name or user.username) if user else "Recipient"),
+            [history_item] if history_item else [],
+        )
+        if error_name:
+            errors.append(email + ": " + error_name)
+        else:
+            sent_count += 1
+            delivered.add(marker)
+
+    for record_id, key in delivered:
+        exists = AlertDispatch.query.filter_by(
+            record_type="audit", record_id=record_id,
+            alert_stage="upcoming", expiry_key=key,
+        ).first()
+        if exists:
+            continue
+        db.session.add(AlertDispatch(
+            record_type="audit", record_id=record_id,
+            alert_stage="upcoming", expiry_key=key, sent_at=datetime.utcnow(),
+        ))
+    if delivered:
+        db.session.commit()
+
+    if sent_count and not errors:
+        log_event("ALERT_SENT",
+                  "Upcoming-audit reminders sent to " + str(sent_count) + " recipient(s) for "
+                  + str(len(delivered)) + " audit schedule(s).",
+                  username_or_process="system")
+        return True, None, len(delivered)
+    error_text = "; ".join(errors) if errors else "No valid recipients to send to."
+    log_event("ALERT_FAILED",
+              ("Upcoming-audit reminders: sent " + str(sent_count) + ", issues: " + error_text)[:2000],
+              level="ERROR", username_or_process="system")
+    return sent_count > 0, error_text, len(delivered)

@@ -480,9 +480,12 @@ def main():
         check("manual with no recipients sends no mail", not captured)
 
         # ---- route-level authorization ----
-        allowed_route_roles = {"zz_ve_super", "zz_ve_admin", "zz_ve_fadm",
-                               "zz_ve_cmgr", "zz_ve_tmgr"}
-        denied_roles = {"zz_ve_tusr": 403, "zz_ve_cuser": 403, "zz_ve_cview": 403}
+        # Vehicle manual alerts are Transport-only now: Super Admin + Transport
+        # Manager may send. Administration, Factory Admin, Compliance Manager,
+        # Transport User, Compliance User/Viewer are all denied at the route.
+        allowed_route_roles = {"zz_ve_super", "zz_ve_tmgr"}
+        denied_roles = {"zz_ve_tusr": 403, "zz_ve_cuser": 403, "zz_ve_cview": 403,
+                        "zz_ve_admin": 403, "zz_ve_fadm": 403, "zz_ve_cmgr": 403}
 
         get_url = f"/vehicles/{ids['v_urgent']}/docs/fitness/send-alert"
         for user, expected in denied_roles.items():

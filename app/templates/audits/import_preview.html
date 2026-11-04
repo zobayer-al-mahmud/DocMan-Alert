@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Audit Import Preview{% endblock %}
+{% block page_title %}Audit Import Preview{% endblock %}
+
+{% block content %}
+<a href="{{ url_for('audits.import_audits') }}" class="btn btn-outline-secondary btn-sm mb-3">&larr; Start Over</a>
+
+<div class="row g-3 mb-3">
+    <div class="col"><div class="stat-card"><div class="stat-label">Total Rows</div><div class="stat-value">{{ counts.total }}</div></div></div>
+    <div class="col"><div class="stat-card stat-success"><div class="stat-label">New</div><div class="stat-value">{{ counts.new }}</div></div></div>
+    <div class="col"><div class="stat-card"><div class="stat-label">Update</div><div class="stat-value">{{ counts.updated }}</div></div></div>
+    <div class="col"><div class="stat-card stat-warning"><div class="stat-label">With Validity</div><div class="stat-value">{{ counts.with_validity }}</div></div></div>
+    <div class="col"><div class="stat-card"><div class="stat-label">No Validity</div><div class="stat-value">{{ counts.no_validity }}</div></div></div>
+</div>
+
+{% if errors %}
+<div class="alert alert-warning">
+    <strong>{{ errors|length }} row(s) skipped:</strong>
+    <ul class="mb-0 mt-2">
+        {% for e in errors[:40] %}<li>{{ e }}</li>{% endfor %}
+        {% if errors|length > 40 %}<li>... and {{ errors|length - 40 }} more.</li>{% endif %}
+    </ul>
+</div>
+{% endif %}
+
+<div class="card mb-3">
+<table class="table table-sm mb-0">
+    <thead>
+        <tr>
+            <th>Row</th><th>Action</th><th>Date</th><th>Audit</th><th>Audited By</th>
+            <th>Type</th><th>Factory</th><th>Validity</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for r in preview_rows %}
+        <tr>
+            <td>{{ r.source_row }}</td>
+            <td>
+                {% if r.action == 'new' %}<span class="badge bg-success">New</span>
+                {% else %}<span class="badge bg-primary">Update</span>{% endif %}
+            </td>
+            <td class="small">{{ r.date_start }}</td>
+            <td class="small">{{ r.audit_name }}</td>
+            <td class="small">{{ r.audited_by or '-' }}</td>
+            <td class="small">{{ r.audit_type or '-' }}</td>
+            <td class="small">{{ r.factory_raw or '-' }}</td>
+            <td class="small">{{ r.validity_date or '-' }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+{% if rows|length > preview_rows|length %}
+<p class="text-muted small">Showing first {{ preview_rows|length }} of {{ rows|length }} rows.</p>
+{% endif %}
+
+{% if counts.total %}
+<form method="POST" action="{{ url_for('audits.import_confirm') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="token" value="{{ token }}">
+    <input type="hidden" name="filename" value="{{ filename }}">
+    <button type="submit" class="btn btn-primary"
+            onclick="return confirm('Apply {{ counts.new }} new and {{ counts.updated }} updated audit(s)?');">
+        Confirm Import
+    </button>
+    <a href="{{ url_for('audits.import_audits') }}" class="btn btn-outline-secondary">Cancel</a>
+</form>
+{% else %}
+<div class="alert alert-info">Nothing to import.</div>
+<a href="{{ url_for('audits.import_audits') }}" class="btn btn-outline-secondary">Done</a>
+{% endif %}
+{% endblock %}

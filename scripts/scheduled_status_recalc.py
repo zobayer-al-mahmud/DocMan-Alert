@@ -22,7 +22,10 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app import create_app
-from app.utils import recalculate_all_statuses, send_emergency_alerts, log_event
+from app.utils import (
+    recalculate_all_statuses, send_emergency_alerts,
+    send_upcoming_audit_reminders, log_event,
+)
 
 
 def main():
@@ -37,6 +40,8 @@ def main():
                 sent, error, count = False, None, 0
             else:
                 sent, error, count = send_emergency_alerts()
+                # Remind the Compliance team of audits scheduled soon.
+                send_upcoming_audit_reminders()
         except Exception as e:
             log_event("JOB_FAILURE", f"Status recalculation failed: {type(e).__name__}",
                       level="ERROR", username_or_process="scheduler")

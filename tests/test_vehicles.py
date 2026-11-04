@@ -285,11 +285,14 @@ def test_routes_rbac(app):
             u.role_id = orig_role
             db.session.commit()
 
-    # Compliance User: 403 on all three
-    _swap_role("Compliance User")
-    for path in ("/vehicles/", "/vehicles/dashboard", "/vehicles/import"):
-        r = client.get(path)
-        check(r.status_code == 403, f"Compliance User {path} = 403 (got {r.status_code})")
+    # Vehicle Documents is Transport-only: every non-Transport, non-SA role is
+    # locked out of list, dashboard, and import (direct URL returns 403).
+    for role_name in ("Compliance User", "Compliance Manager", "Compliance Viewer",
+                      "Administration", "Factory Admin"):
+        _swap_role(role_name)
+        for path in ("/vehicles/", "/vehicles/dashboard", "/vehicles/import"):
+            r = client.get(path)
+            check(r.status_code == 403, f"{role_name} {path} = 403 (got {r.status_code})")
 
     # Transport Manager: 200 on all three, / redirects
     _swap_role("Transport Manager")
@@ -467,12 +470,15 @@ def test_documents_hidden_from_transport(app):
     r = client.get("/documents/")
     check(r.status_code == 403, f"Transport User /documents/ = 403 (got {r.status_code})")
 
-    # Factory Admin: still has access
+    # Factory Admin: no vehicle access (Transport-only module), but keeps
+    # Documents access and sees the Documents nav link.
     _swap("Factory Admin")
     r = client.get("/vehicles/")
-    # Factory Admin can't view /vehicles/ but can see Documents in nav from any page
+    check(r.status_code == 403, f"Factory Admin /vehicles/ = 403 (got {r.status_code})")
     r2 = client.get("/documents/")
     check(r2.status_code == 200, f"Factory Admin /documents/ = 200 (got {r2.status_code})")
+    html = client.get("/documents/").data.decode()
+    check('href="/vehicles/"' not in html, "sidebar has no /vehicles/ link for Factory Admin")
 
     _restore()
 

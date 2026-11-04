@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field_errors %}
+{% block title %}{{ title }}{% endblock %}
+{% block page_title %}{{ title }}{% endblock %}
+
+{% block content %}
+<a href="{{ url_for('audits.list_audits') }}" class="btn btn-outline-secondary btn-sm mb-3">&larr; Back</a>
+
+<div class="card"><div class="card-body p-4">
+<form method="POST">
+    {{ form.hidden_tag() }}
+    <div class="row g-3">
+        <div class="col-md-3">
+            {{ form.date_start.label(class="form-label") }}
+            {{ form.date_start(class="form-control", type="date") }}
+            {{ field_errors(form.date_start) }}
+        </div>
+        <div class="col-md-3">
+            {{ form.date_end.label(class="form-label") }}
+            {{ form.date_end(class="form-control", type="date") }}
+            {{ field_errors(form.date_end) }}
+        </div>
+        <div class="col-md-6">
+            {{ form.audit_name.label(class="form-label") }}
+            {{ form.audit_name(class="form-control") }}
+            {{ field_errors(form.audit_name) }}
+        </div>
+        <div class="col-md-6">
+            {{ form.audited_by.label(class="form-label") }}
+            {{ form.audited_by(class="form-control") }}
+        </div>
+        <div class="col-md-6">
+            {{ form.audit_type.label(class="form-label") }}
+            {{ form.audit_type(class="form-control", list="audit_types") }}
+            <datalist id="audit_types">{% for t in type_suggestions %}<option value="{{ t }}">{% endfor %}</datalist>
+        </div>
+        <div class="col-md-6">
+            {{ form.auditor_name.label(class="form-label") }}
+            {{ form.auditor_name(class="form-control", rows="2") }}
+        </div>
+        <div class="col-md-6">
+            {{ form.buyer.label(class="form-label") }}
+            {{ form.buyer(class="form-control", rows="2") }}
+        </div>
+        <div class="col-md-6">
+            {{ form.reference_id.label(class="form-label") }}
+            {{ form.reference_id(class="form-control", rows="2") }}
+        </div>
+        <div class="col-md-4">
+            {{ form.announcement_type.label(class="form-label") }}
+            {{ form.announcement_type(class="form-select") }}
+        </div>
+        <div class="col-md-4">
+            {{ form.monitoring_type.label(class="form-label") }}
+            {{ form.monitoring_type(class="form-control") }}
+        </div>
+        <div class="col-md-4">
+            {{ form.validity_date.label(class="form-label") }}
+            {{ form.validity_date(class="form-control", type="date") }}
+            <div class="form-text">Leave blank for a one-time audit (no certificate expiry).</div>
+        </div>
+        <div class="col-md-6">
+            {{ form.factory_raw.label(class="form-label") }}
+            {{ form.factory_raw(class="form-control") }}
+            <div class="form-text">The original text, e.g. "AGL (ASL)".</div>
+        </div>
+        <div class="col-md-6">
+            {{ form.factory_ids.label(class="form-label") }}
+            {{ form.factory_ids(class="form-select", size="4") }}
+            <div class="form-text">Used for factory-wise filtering. Hold Ctrl/Cmd to pick several.</div>
+        </div>
+        <div class="col-md-6">
+            {{ form.rating.label(class="form-label") }}
+            {{ form.rating(class="form-control", rows="2") }}
+        </div>
+        <div class="col-md-6">
+            {{ form.cost.label(class="form-label") }}
+            {{ form.cost(class="form-control", rows="2") }}
+        </div>
+        <div class="col-md-6">
+            {{ form.alert_recipients.label(class="form-label") }}
+            {{ form.alert_recipients(class="form-select", size="4") }}
+            <div class="form-text">Extra people to email (beyond the Compliance team + group mailbox).</div>
+        </div>
+    </div>
+    <div class="mt-3">
+        {{ form.submit(class="btn btn-primary") }}
+        <a href="{{ url_for('audits.list_audits') }}" class="btn btn-outline-secondary">Cancel</a>
+    </div>
+</form>
+</div></div>
+{% endblock %}

@@ -31,8 +31,11 @@
                 {% if current_user.is_authenticated and current_user.role.name in ["Super Admin", "Factory Admin", "Compliance Manager", "Compliance User", "Compliance Viewer"] %}
                 <a href="{{ url_for('employees.list_employees') }}" class="nav-link {% if active_page == 'employees' %}active{% endif %}">Employee Compliance</a>
                 {% endif %}
-                {% if current_user.is_authenticated and current_user.role.name in ["Super Admin", "Administration", "Transport Manager", "Transport User", "Factory Admin", "Compliance Manager"] %}
+                {% if current_user.is_authenticated and current_user.role.name in ["Super Admin", "Transport Manager", "Transport User"] %}
                 <a href="{{ url_for('vehicles.list_vehicles') }}" class="nav-link {% if active_page == 'vehicles' %}active{% endif %}">Vehicle Documents</a>
+                {% endif %}
+                {% if current_user.is_authenticated and current_user.role.name in ["Super Admin", "Compliance Manager", "Compliance User", "Compliance Viewer"] %}
+                <a href="{{ url_for('audits.list_audits') }}" class="nav-link {% if active_page == 'audits' %}active{% endif %}">Audit Tracker</a>
                 {% endif %}
 
                 {% if current_user.is_authenticated and current_user.role.name in ["Super Admin", "Administration"] %}

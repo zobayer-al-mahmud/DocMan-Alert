@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_badge %}
+{% block title %}{{ audit.audit_name }}{% endblock %}
+{% block page_title %}Audit Detail{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <a href="{{ url_for('audits.list_audits') }}" class="btn btn-outline-secondary btn-sm">&larr; Back</a>
+    <div class="d-flex gap-2">
+        {% if can_alert %}<a href="{{ url_for('audits.send_audit_alert', audit_id=audit.id) }}" class="btn btn-sm btn-outline-warning">Send alert</a>{% endif %}
+        {% if can_manage %}<a href="{{ url_for('audits.edit_audit', audit_id=audit.id) }}" class="btn btn-sm btn-secondary">Edit</a>{% endif %}
+        {% if can_delete %}
+        <form method="POST" action="{{ url_for('audits.archive_audit', audit_id=audit.id) }}" style="display:inline;"
+              onsubmit="return confirm('{{ 'Restore' if not audit.is_active else 'Archive' }} this audit?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-sm btn-outline-danger">{{ 'Restore' if not audit.is_active else 'Archive' }}</button>
+        </form>
+        <a href="{{ url_for('audits.delete_audit', audit_id=audit.id) }}" class="btn btn-sm btn-danger">Delete</a>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card mb-3"><div class="card-body">
+    <div class="d-flex justify-content-between align-items-start">
+        <h5 class="mb-2">{{ audit.audit_name }}</h5>
+        <div>{{ status_badge(audit.status) }}</div>
+    </div>
+    <div class="row">
+        <div class="col-md-4"><p><strong>Audit Date:</strong> {{ audit.date_start }}{% if audit.date_end and audit.date_end != audit.date_start %} to {{ audit.date_end }}{% endif %}</p></div>
+        <div class="col-md-4"><p><strong>Audit Type:</strong> {{ audit.audit_type or '-' }}</p></div>
+        <div class="col-md-4"><p><strong>Validity (expiry):</strong> {{ audit.validity_date or 'No expiry' }}</p></div>
+        <div class="col-md-4"><p><strong>Audited By:</strong> {{ audit.audited_by or '-' }}</p></div>
+        <div class="col-md-4"><p><strong>Announcement:</strong> {{ audit.announcement_type or '-' }}</p></div>
+        <div class="col-md-4"><p><strong>Monitoring:</strong> {{ audit.monitoring_type or '-' }}</p></div>
+        <div class="col-md-4"><p><strong>Factory (recorded):</strong> {{ audit.factory_raw or '-' }}</p></div>
+        <div class="col-md-8"><p><strong>Mapped factories:</strong>
+            {% for f in audit.factories %}<span class="badge bg-secondary">{{ f.name }}</span> {% else %}<span class="text-muted">none</span>{% endfor %}
+        </p></div>
+        <div class="col-md-6"><p><strong>Buyer:</strong> {{ audit.buyer or '-' }}</p></div>
+        <div class="col-md-6"><p><strong>Reference / ID:</strong> {{ audit.reference_id or '-' }}</p></div>
+        <div class="col-md-6"><p><strong>Auditor Name(s):</strong> {{ audit.auditor_name or '-' }}</p></div>
+        <div class="col-md-6"><p><strong>Rating:</strong> {{ audit.rating or '-' }}</p></div>
+        <div class="col-md-6"><p><strong>Cost:</strong> {{ audit.cost or '-' }}</p></div>
+        <div class="col-md-6"><p><strong>Active:</strong> {{ 'Yes' if audit.is_active else 'No (archived)' }}</p></div>
+    </div>
+</div></div>
+
+<div class="card"><div class="card-body">
+    <h6 class="mb-2">Additional alert recipients</h6>
+    {% if audit.alert_recipients %}
+    <ul class="mb-0">
+        {% for u in audit.alert_recipients %}
+        <li>{{ u.full_name or u.username }} &mdash; {{ u.email or 'no email' }} <span class="text-muted">({{ u.role.name }})</span></li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="text-muted mb-0">No record-specific recipients. Alerts still go to the Compliance team and the Compliance group mailbox.</p>
+    {% endif %}
+</div></div>
+{% endblock %}

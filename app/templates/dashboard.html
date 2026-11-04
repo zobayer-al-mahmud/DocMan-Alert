@@ -140,6 +140,80 @@
 </div>
 {% endif %}
 
+{% if audit_overview %}
+<h5 class="section-heading mb-2">Compliance Audits</h5>
+<div class="row g-3 mb-4">
+    <div class="col-6 col-lg">
+        <div class="stat-card"><div class="stat-label">Total Audits</div><div class="stat-value">{{ audit_overview.total }}</div></div>
+    </div>
+    <div class="col-6 col-lg">
+        <div class="stat-card"><div class="stat-label">Upcoming</div><div class="stat-value">{{ audit_overview.upcoming }}</div></div>
+    </div>
+    <div class="col-6 col-lg">
+        <div class="stat-card stat-success"><div class="stat-label">Completed</div><div class="stat-value">{{ audit_overview.completed }}</div></div>
+    </div>
+    <div class="col-6 col-lg">
+        <div class="stat-card stat-warning"><div class="stat-label">Validity Expiring</div><div class="stat-value">{{ audit_overview.expiring }}</div></div>
+    </div>
+    <div class="col-6 col-lg">
+        <div class="stat-card stat-danger"><div class="stat-label">Overdue (expired)</div><div class="stat-value">{{ audit_overview.overdue }}</div></div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header">Upcoming Audits</div>
+            <div class="card-body p-0">
+                <table class="table table-sm mb-0">
+                    <thead><tr><th>Date</th><th>Audit</th><th>Type</th><th>Factory</th></tr></thead>
+                    <tbody>
+                        {% for a in audit_overview.upcoming_rows %}
+                        <tr>
+                            <td class="small">{{ a.date_start }}</td>
+                            <td class="small"><a href="{{ a.url }}">{{ a.audit_name }}</a></td>
+                            <td class="small">{{ a.audit_type }}</td>
+                            <td class="small">{{ a.factory }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" class="text-center text-muted py-4">No upcoming audits scheduled.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header">Validity Needing Attention</div>
+            <div class="card-body p-0">
+                <table class="table table-sm mb-0">
+                    <thead><tr><th>Audit</th><th>Factory</th><th>Validity</th><th>Status</th></tr></thead>
+                    <tbody>
+                        {% for a in audit_overview.attention_rows %}
+                        <tr>
+                            <td class="small"><a href="{{ a.url }}">{{ a.audit_name }}</a></td>
+                            <td class="small">{{ a.factory }}</td>
+                            <td class="small">{{ a.validity_date or '-' }}</td>
+                            <td>
+                                {% if a.status == "Expired" %}
+                                    <span class="badge-status badge-expired">Expired</span>
+                                {% else %}
+                                    <span class="badge-status badge-expiring-30">{{ a.status }}</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" class="text-center text-muted py-4">No audit certificates need attention.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <div class="row g-3">
     <div class="col-lg-7">
         <div class="card">

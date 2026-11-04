@@ -68,7 +68,35 @@ def ensure_alert_schema():
     _backfill_file_versions()
     _rebuild_regulatory_tables_if_needed()
     _ensure_vehicle_tables()
+    _ensure_audit_tables()
     return changed
+
+
+def _ensure_audit_tables():
+    """Create the Audit Tracker tables + indexes idempotently.
+
+    create_all() in the app factory already creates missing SQLAlchemy-declared
+    tables (audits, audit_factories, audit_alert_recipients); this re-asserts the
+    indexes on every startup so the schema self-heals on databases where the
+    tables already existed before an index was added.
+    """
+    from sqlalchemy import inspect
+    inspector = inspect(db.engine)
+    if not inspector.has_table("audits"):
+        db.create_all()
+    index_sql = [
+        "CREATE INDEX IF NOT EXISTS ix_audits_date_start ON audits (date_start)",
+        "CREATE INDEX IF NOT EXISTS ix_audits_validity_date ON audits (validity_date)",
+        "CREATE INDEX IF NOT EXISTS ix_audits_audit_type ON audits (audit_type)",
+        "CREATE INDEX IF NOT EXISTS ix_audits_status ON audits (status)",
+        "CREATE INDEX IF NOT EXISTS ix_audits_import_key ON audits (import_key)",
+        "CREATE INDEX IF NOT EXISTS ix_audits_is_active ON audits (is_active)",
+        "CREATE INDEX IF NOT EXISTS ix_audit_factories_factory ON audit_factories (factory_id)",
+        "CREATE INDEX IF NOT EXISTS ix_audit_alert_user ON audit_alert_recipients (user_id)",
+    ]
+    for statement in index_sql:
+        db.session.execute(text(statement))
+    db.session.commit()
 
 
 def _ensure_vehicle_tables():

@@ -82,6 +82,9 @@ def create_app():
     from app.routes.vehicles import vehicles_bp
     app.register_blueprint(vehicles_bp)
 
+    from app.routes.audits import audits_bp
+    app.register_blueprint(audits_bp)
+
     @app.after_request
     def set_security_headers(response):
         if not request.path.startswith("/static/"):
@@ -111,6 +114,8 @@ def create_app():
             active = "dashboard"
         elif endpoint.startswith("vehicles."):
             active = "vehicles"
+        elif endpoint.startswith("audits."):
+            active = "audits"
         elif endpoint.startswith("regulatory.") and "categor" in endpoint:
             active = "reg_categories"
         elif endpoint.startswith("regulatory.") and "author" in endpoint:

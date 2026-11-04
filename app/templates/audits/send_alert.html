@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Send audit alert{% endblock %}
+{% block page_title %}Send audit alert · {{ audit.audit_name }}{% endblock %}
+
+{% block content %}
+<a href="{{ url_for('audits.view_audit', audit_id=audit.id) }}" class="btn btn-outline-secondary btn-sm mb-3">&larr; Back to audit</a>
+
+<div class="card mb-3"><div class="card-body">
+    <h5 class="mb-2">{{ audit.audit_name }}</h5>
+    <p class="mb-1"><strong>Audit Date:</strong> {{ audit.date_start }}{% if audit.date_end and audit.date_end != audit.date_start %} to {{ audit.date_end }}{% endif %}</p>
+    <p class="mb-1"><strong>Factory:</strong> {{ audit.factory_raw or '-' }}</p>
+    <p class="mb-1"><strong>Validity:</strong> {{ audit.validity_date or 'No expiry' }}</p>
+    <p class="mb-0"><strong>Status:</strong> {{ audit.status }}</p>
+</div></div>
+
+<div class="card"><div class="card-body">
+    <p class="text-muted">Compliance-role accounts (factory match or Global Access), the audit creator,
+        and the Compliance group mailbox are listed. Only ticked recipients receive this message.</p>
+
+    {% if allowed_users or allowed_group_emails %}
+    <form method="POST" onsubmit="return confirm('Send this alert to the selected recipients?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="border rounded p-3 mb-3" style="max-height:360px; overflow:auto;">
+            {% if allowed_group_emails %}
+            <div class="mb-2 pb-2 border-bottom">
+                {% for address in allowed_group_emails %}
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" name="group_email" value="{{ address }}" id="group_{{ loop.index }}" checked>
+                    <label class="form-check-label" for="group_{{ loop.index }}">
+                        <strong>Compliance group mailbox</strong> &mdash; {{ address }}
+                    </label>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% if allowed_users %}
+            {% for user in allowed_users %}
+            <div class="form-check mb-2">
+                <input class="form-check-input" type="checkbox" name="recipient_id" value="{{ user.id }}" id="user_{{ user.id }}">
+                <label class="form-check-label" for="user_{{ user.id }}">
+                    <strong>{{ user.full_name or user.username }}</strong> &mdash; {{ user.email }}<br>
+                    <span class="text-muted">{{ user.role.name }} &middot; {{ user.factory.name if user.factory else "Global Access" }}</span>
+                </label>
+            </div>
+            {% endfor %}
+            {% else %}
+            <p class="text-muted mb-0">No individual Compliance recipients configured.</p>
+            {% endif %}
+        </div>
+        <button class="btn btn-primary" type="submit">Send this alert</button>
+        <a href="{{ url_for('audits.view_audit', audit_id=audit.id) }}" class="btn btn-outline-secondary">Cancel</a>
+    </form>
+    {% else %}
+    <p class="text-muted mb-0">No recipients configured. Add a Compliance user with a valid email, or set a
+        Compliance department group mailbox under Departments.</p>
+    {% endif %}
+</div></div>
+{% endblock %}

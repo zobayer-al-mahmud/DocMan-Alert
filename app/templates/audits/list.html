@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_badge %}
+{% block title %}Audit Tracker{% endblock %}
+{% block page_title %}Compliance Audit Tracker{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        {% if show_archived %}
+        <a href="{{ url_for('audits.list_audits') }}" class="btn btn-outline-secondary btn-sm">Active audits</a>
+        {% else %}
+        <a href="{{ url_for('audits.list_audits', archived=1) }}" class="btn btn-outline-secondary btn-sm">Archived</a>
+        {% endif %}
+    </div>
+    <div class="d-flex gap-2">
+        {% if can_import %}<a href="{{ url_for('audits.import_audits') }}" class="btn btn-outline-primary">Import Excel</a>{% endif %}
+        {% if can_manage %}<a href="{{ url_for('audits.add_audit') }}" class="btn btn-accent">+ Add Audit</a>{% endif %}
+    </div>
+</div>
+
+<form method="GET" class="card card-body mb-3 py-2">
+    {% if show_archived %}<input type="hidden" name="archived" value="1">{% endif %}
+    <div class="row g-2">
+        <div class="col-md-3">
+            <input type="text" name="search" value="{{ selected_search }}" class="form-control form-control-sm"
+                   placeholder="Name / firm / buyer / auditor / factory">
+        </div>
+        <div class="col-md-3">
+            <select name="factory_id" class="form-select form-select-sm">
+                <option value="">All factories</option>
+                {% for fid, fname in factories %}
+                <option value="{{ fid }}" {% if selected_factory_id == fid %}selected{% endif %}>{{ fname }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <input type="text" name="audit_type" value="{{ selected_audit_type }}" class="form-control form-control-sm"
+                   placeholder="Audit type" list="audit_types">
+            <datalist id="audit_types">
+                {% for t in type_suggestions %}<option value="{{ t }}">{% endfor %}
+            </datalist>
+        </div>
+        <div class="col-md-2">
+            <select name="status" class="form-select form-select-sm">
+                <option value="">Any status</option>
+                {% for s in status_choices %}
+                <option value="{{ s }}" {% if selected_status == s %}selected{% endif %}>{{ s }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-1"><button type="submit" class="btn btn-sm btn-primary w-100">Filter</button></div>
+        <div class="col-md-1"><a href="{{ url_for('audits.list_audits') }}" class="btn btn-sm btn-link">Clear</a></div>
+    </div>
+</form>
+
+<div class="card">
+<table class="table table-sm mb-0 align-middle">
+    <thead>
+        <tr>
+            <th>Date</th>
+            <th>Audit</th>
+            <th>Audited By</th>
+            <th>Type</th>
+            <th>Factory</th>
+            <th>Validity</th>
+            <th>Status</th>
+            <th class="text-end">Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for a in audits %}
+        <tr>
+            <td class="small">{{ a.date_start }}{% if a.date_end and a.date_end != a.date_start %}<br><span class="text-muted">to {{ a.date_end }}</span>{% endif %}</td>
+            <td>
+                <a href="{{ url_for('audits.view_audit', audit_id=a.id) }}" class="fw-semibold text-decoration-none">{{ a.audit_name }}</a>
+                {% if a.buyer %}<div class="small text-muted text-truncate" style="max-width:200px;">{{ a.buyer }}</div>{% endif %}
+            </td>
+            <td class="small">{{ a.audited_by or '-' }}</td>
+            <td class="small">{{ a.audit_type or '-' }}</td>
+            <td class="small">{{ a.factory_raw or '-' }}</td>
+            <td class="small">{{ a.validity_date or '-' }}</td>
+            <td>{{ status_badge(a.status) }}</td>
+            <td class="text-end">
+                <a href="{{ url_for('audits.view_audit', audit_id=a.id) }}" class="btn btn-sm btn-outline-secondary">View</a>
+            </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" class="text-center text-muted py-4">No audits found.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+
+{% if pagination.pages > 1 %}
+<nav class="mt-3"><ul class="pagination">
+    {% for p in range(1, pagination.pages + 1) %}
+    <li class="page-item {% if p == pagination.page %}active{% endif %}">
+        <a class="page-link" href="{{ url_for('audits.list_audits', page=p, search=selected_search, factory_id=selected_factory_id, audit_type=selected_audit_type, status=selected_status, archived=(1 if show_archived else None)) }}">{{ p }}</a>
+    </li>
+    {% endfor %}
+</ul></nav>
+{% endif %}
+{% endblock %}

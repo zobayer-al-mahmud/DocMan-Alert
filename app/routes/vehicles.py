@@ -31,27 +31,20 @@ from app.models import AlertDispatch
 
 vehicles_bp = Blueprint("vehicles", __name__, url_prefix="/vehicles")
 
-# Who may do what. Vehicle Documents are a Transport-oriented module; the
-# Transport roles own the data lifecycle. Factory Admin and Compliance
-# Manager get read-only visibility so they can send manual email alerts
-# (see ALERT_ROLES below).
-VIEW_ROLES = (
-    "Super Admin", "Administration", "Transport Manager", "Transport User",
-    "Factory Admin", "Compliance Manager",
-)
-MANAGE_ROLES = ("Super Admin", "Administration", "Transport Manager", "Transport User")
-DELETE_ROLES = ("Super Admin", "Administration", "Transport Manager")
+# Who may do what. Vehicle Documents are a Transport-only module: the Transport
+# roles own the data lifecycle and Super Admin retains global access. No
+# Compliance, Administration, or Factory Admin role may see or reach any vehicle
+# page — every gate below enforces this, so direct URL access returns 403.
+VIEW_ROLES = ("Super Admin", "Transport Manager", "Transport User")
+MANAGE_ROLES = ("Super Admin", "Transport Manager", "Transport User")
+DELETE_ROLES = ("Super Admin", "Transport Manager")
 # Bulk (multi-select) delete is Super Admin only. Other DELETE_ROLES delete
 # one vehicle at a time.
 BULK_DELETE_ROLES = ("Super Admin",)
-IMPORT_ROLES = ("Super Admin", "Administration", "Transport Manager")
+IMPORT_ROLES = ("Super Admin", "Transport Manager")
 # Manual email alert roles. Transport User is deliberately excluded here
-# (they view the fleet but cannot send alerts); Factory Admin and Compliance
-# Manager are allowed per Transport policy.
-ALERT_ROLES = (
-    "Super Admin", "Administration",
-    "Factory Admin", "Compliance Manager", "Transport Manager",
-)
+# (they view the fleet but cannot send alerts).
+ALERT_ROLES = ("Super Admin", "Transport Manager")
 # Documents treated as "urgent" on the dashboard Urgent Renewals panel and by
 # the list page's `urgent=1` "See all" filter. Defined once so both agree.
 URGENT_STATUSES = (STATUS_EXPIRED, "Expiring in 7 Days", "Expiring in 30 Days")

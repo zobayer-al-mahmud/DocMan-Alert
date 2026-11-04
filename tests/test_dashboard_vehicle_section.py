@@ -83,7 +83,9 @@ with app.test_request_context("/"):
 
 # --- RBAC: who may see the section ------------------------------------------
 check("Super Admin" in VIEW_ROLES, "Super Admin is allowed to view the vehicle section")
-for r in ("Compliance User", "Compliance Viewer"):
+# Transport-only module: everyone else who lands on the main dashboard is out.
+for r in ("Compliance User", "Compliance Viewer", "Compliance Manager",
+          "Administration", "Factory Admin"):
     check(r not in VIEW_ROLES, f"{r} is NOT allowed to view the vehicle section")
 
 # --- empty state renders without data (no DB) ------------------------------

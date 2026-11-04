@@ -116,6 +116,33 @@ class VehicleDocumentRenewForm(FlaskForm):
     submit = SubmitField("Create New Version")
 
 
+class AuditForm(FlaskForm):
+    """Add / edit one compliance audit. Every source-workbook field is editable;
+    factory_ids is a multi-select because an audit can cover several factories."""
+    date_start = DateField("Start Date", validators=[DataRequired()])
+    date_end = DateField("End Date", validators=[Optional()])
+    audit_name = StringField("Audit Name", validators=[DataRequired(), Length(max=300)])
+    audited_by = StringField("Audited By (firm)", validators=[Optional(), Length(max=300)])
+    auditor_name = TextAreaField("Auditor Name(s)", validators=[Optional()])
+    buyer = TextAreaField("Buyer", validators=[Optional()])
+    reference_id = TextAreaField("Reference / ID", validators=[Optional()])
+    audit_type = StringField("Audit Type", validators=[Optional(), Length(max=100)])
+    announcement_type = SelectField("Announcement Type", choices=[
+        ("", "-"),
+        ("Announced", "Announced"),
+        ("Unannounced", "Unannounced"),
+        ("Semi-Announced", "Semi-Announced"),
+    ], validators=[Optional()])
+    monitoring_type = StringField("Monitoring Type", validators=[Optional(), Length(max=60)])
+    factory_raw = StringField("Factory (as recorded)", validators=[Optional(), Length(max=200)])
+    factory_ids = SelectMultipleField("Factories (for filtering)", coerce=int, validators=[Optional()])
+    rating = TextAreaField("Rating", validators=[Optional()])
+    validity_date = DateField("Validity (certificate expiry)", validators=[Optional()])
+    cost = TextAreaField("Cost", validators=[Optional()])
+    alert_recipients = SelectMultipleField("Additional Alert Recipients", coerce=int, validators=[Optional()])
+    submit = SubmitField("Save")
+
+
 class ServiceCategoryForm(FlaskForm):
     name = StringField("Category Name", validators=[DataRequired(), Length(max=150)])
     submit = SubmitField("Save")

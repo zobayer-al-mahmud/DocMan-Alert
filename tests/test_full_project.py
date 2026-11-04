@@ -702,7 +702,9 @@ def main():
         r = c.get("/")
         check("dashboard loads", r.status_code == 200 and b"Factory Documents" in r.data)
         check("dashboard has employee section", b"Employee Compliance" in r.data)
-        check("no Audit Trail nav", b"href=\"/audit" not in r.data and b"nav-link\">Audit Trail" not in r.data)
+        # SystemLog is deliberately NOT an "Audit Trail". (The separate "Audit
+        # Tracker" compliance module is a different feature and may appear.)
+        check("no Audit Trail nav", b"Audit Trail" not in r.data)
         check("no Notifications nav", b"Notifications" not in r.data)
         check("no Send Test Alert", b"Send Test Alert" not in r.data)
 

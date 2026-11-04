@@ -1,6 +1,7 @@
 import re
 from datetime import datetime
 from flask_login import UserMixin
+from sqlalchemy.ext.hybrid import hybrid_property
 from app import db
 
 
@@ -716,3 +717,102 @@ class SystemLog(db.Model):
 
     def __repr__(self):
         return f"<SystemLog {self.level} {self.event_type}>"
+
+
+# ---------------------------------------------------------------------------
+# Compliance Audit Tracker
+#
+# One row per audit/assessment/certification event. Every column of the source
+# "Audit Tracker" workbook is preserved verbatim (factory_raw keeps the exact
+# original text like "AGL (ASL)" or "ABM AJL AGL PWPL ASL"). For factory-wise
+# filtering an audit is linked to zero or more Factory rows through the
+# audit_factories association, derived by tokenizing factory_raw on import/save.
+# Validity is the certificate expiry date (blank or "-" => one-time audit with
+# no expiry to track); status is computed from it by the shared status engine.
+# ---------------------------------------------------------------------------
+
+# Abbreviations used in the Factory column -> case-insensitive substrings that
+# identify the real Factory.name. Longest tokens first so "AGL" does not shadow
+# a more specific code. "Both" is expanded to AGL + ASL by the tokenizer.
+AUDIT_FACTORY_TOKENS = (
+    ("ABM", "ABM Fashions"),
+    ("AJL", "Ananta Jeanswear"),
+    ("PWPL", "Paradise Washing"),
+    ("AGL", "Ananta Garments"),
+    ("ASL", "Ananta Sportswear"),
+)
+
+# Status sentinel for audits with no validity/expiry date (one-time audits).
+AUDIT_NO_VALIDITY = "No Validity"
+
+
+audit_factories = db.Table(
+    "audit_factories",
+    db.Column("audit_id", db.Integer, db.ForeignKey("audits.id", ondelete="CASCADE"), primary_key=True),
+    db.Column("factory_id", db.Integer, db.ForeignKey("factories.id", ondelete="CASCADE"), primary_key=True, index=True),
+)
+
+audit_alert_recipients = db.Table(
+    "audit_alert_recipients",
+    db.Column("audit_id", db.Integer, db.ForeignKey("audits.id", ondelete="CASCADE"), primary_key=True),
+    db.Column("user_id", db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, index=True),
+)
+
+
+class Audit(db.Model):
+    __tablename__ = "audits"
+
+    id = db.Column(db.Integer, primary_key=True)
+    date_start = db.Column(db.Date, index=True)
+    date_end = db.Column(db.Date)
+    audit_name = db.Column(db.String(300), nullable=False, default="")
+    audited_by = db.Column(db.String(300))          # audit firm / organization
+    auditor_name = db.Column(db.Text)               # individual auditors (free text)
+    buyer = db.Column(db.Text)
+    reference_id = db.Column(db.Text)               # the source "ID" column
+    audit_type = db.Column(db.String(100), index=True)
+    announcement_type = db.Column(db.String(60))
+    monitoring_type = db.Column(db.String(60))
+    factory_raw = db.Column(db.String(200))         # verbatim Factory cell
+    rating = db.Column(db.Text)
+    # Certificate expiry. NULL => one-time audit with no expiry to track.
+    validity_date = db.Column(db.Date, index=True)
+    cost = db.Column(db.Text)
+    # Computed from validity_date by the shared engine; AUDIT_NO_VALIDITY when
+    # validity_date is NULL so one-time audits never alert or count as expired.
+    status = db.Column(db.String(30), default=AUDIT_NO_VALIDITY, index=True)
+    # Idempotent-import natural key: normalized date_start + audit_name +
+    # factory_raw. Lets a re-import update the same row instead of duplicating.
+    import_key = db.Column(db.String(400), index=True)
+    is_active = db.Column(db.Boolean, default=True, nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_by = db.Column(db.Integer, db.ForeignKey("users.id"), index=True)
+
+    creator = db.relationship("User", foreign_keys=[created_by])
+    factories = db.relationship("Factory", secondary=audit_factories, lazy="selectin")
+    alert_recipients = db.relationship("User", secondary=audit_alert_recipients, lazy="selectin")
+
+    # The shared alert/status engine (app/utils.py) reads `expiry_date` and
+    # `no_expiry` on every alertable record. Audits track a certificate
+    # `validity_date` instead, so these hybrids expose it under the engine's
+    # expected names for both Python access and SQL query expressions. An audit
+    # with no validity is treated as "no expiry", so it never enters an
+    # expiring/expired alert bucket.
+    @hybrid_property
+    def expiry_date(self):
+        return self.validity_date
+
+    @expiry_date.expression
+    def expiry_date(cls):
+        return cls.validity_date
+
+    @hybrid_property
+    def no_expiry(self):
+        return self.validity_date is None
+
+    @no_expiry.expression
+    def no_expiry(cls):
+        return cls.validity_date.is_(None)
+
+    def __repr__(self):
+        return f"<Audit {self.audit_name!r} {self.date_start}>"

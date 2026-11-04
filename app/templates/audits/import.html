@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Import Audits{% endblock %}
+{% block page_title %}Import Audit Tracker{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-7">
+        <div class="card"><div class="card-body p-4">
+            <p class="text-muted mb-3">
+                Upload the Audit Tracker workbook (.xlsx). Nothing is saved until you confirm the preview.
+                The sheet uses the two-row header (Date Start/End, Audit Name, Audited By, Auditor Name,
+                Buyer, ID, Audit Type, Announcement Type, Monitoring Type, Factory, Rating, Validity, Cost).
+                Running the same file twice updates matching audits and never creates duplicates.
+            </p>
+            <form method="POST" enctype="multipart/form-data">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="mb-3">
+                    <label class="form-label">Excel File (.xlsx)</label>
+                    <input type="file" name="file" accept=".xlsx" class="form-control" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Upload &amp; Preview</button>
+                <a href="{{ url_for('audits.list_audits') }}" class="btn btn-outline-secondary">Cancel</a>
+            </form>
+        </div></div>
+    </div>
+</div>
+{% endblock %}
