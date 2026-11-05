@@ -4,6 +4,46 @@ from datetime import timedelta
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
 
+# Keys a local .env must never override: tooling sets these deliberately and a
+# stray .env entry could do real damage. DATABASE_URL is protected so a .env
+# can never redirect the test suite onto the live database (the Oct-2026
+# fleet-wipe guard in tests/_isolated_db.py).
+_DOTENV_NO_OVERRIDE = {"DATABASE_URL"}
+
+
+def _load_dotenv(path):
+    """Minimal, dependency-free loader for a local ``.env`` file.
+
+    Reads simple ``KEY=VALUE`` lines into ``os.environ``. ``.env`` is the
+    source of truth for local dev, so it OVERRIDES variables already set in the
+    environment (e.g. stale ``setx`` values from an earlier setup) — except the
+    protected keys in ``_DOTENV_NO_OVERRIDE``. In production ``.env`` is
+    git-ignored and excluded from the Docker image, so this is a no-op there —
+    the container's env comes entirely from the Kubernetes Secret.
+    """
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            for raw in fh:
+                line = raw.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, val = line.split("=", 1)
+                key = key.strip()
+                val = val.strip().strip('"').strip("'")
+                if not key:
+                    continue
+                if key in _DOTENV_NO_OVERRIDE and key in os.environ:
+                    continue
+                os.environ[key] = val
+    except FileNotFoundError:
+        pass
+    except OSError:
+        pass
+
+
+_load_dotenv(os.path.join(BASE_DIR, ".env"))
+
+
 def _require_env(name):
     """Return a required environment variable or refuse to start.
 
