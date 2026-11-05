@@ -1,4 +1,5 @@
 import os
+from datetime import timedelta
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
@@ -105,6 +106,15 @@ class Config:
     # Set SESSION_COOKIE_SECURE=1 once the app is served over HTTPS (behind the
     # internal reverse proxy). Defaults to off so first-run LAN HTTP still works.
     SESSION_COOKIE_SECURE = _env_bool("SESSION_COOKIE_SECURE", default=False)
+
+    # --- Inactivity timeout -------------------------------------------------
+    # A signed-in session expires after this many minutes with no requests.
+    # Enforced server-side (app.before_request, sliding window) and mirrored by
+    # the client timer in static/js/session-timeout.js. The session cookie's own
+    # max-age is tied to the same window as defence in depth.
+    INACTIVITY_TIMEOUT_MINUTES = int(os.environ.get("INACTIVITY_TIMEOUT_MINUTES", "15"))
+    PERMANENT_SESSION_LIFETIME = timedelta(minutes=INACTIVITY_TIMEOUT_MINUTES)
+    SESSION_REFRESH_EACH_REQUEST = True
 
     # --- Local OCR (Tesseract). No cloud OCR. ------------------------------
     OCR_ENABLED = _env_bool("OCR_ENABLED", default=True)

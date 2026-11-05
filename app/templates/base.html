@@ -9,7 +9,7 @@
     <link rel="icon" href="{{ url_for('static', filename='img/ananta_favicon.png') }}">
     {% block extra_head %}{% endblock %}
 </head>
-<body>
+<body data-inactivity-minutes="{{ config.INACTIVITY_TIMEOUT_MINUTES }}">
     <div class="app-shell">
         <aside class="sidebar">
             <div class="sidebar-brand">
@@ -104,6 +104,7 @@
     </div>
 
     <script src="{{ url_for('static', filename='vendor/bootstrap.bundle.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/session-timeout.js') }}"></script>
     {% block extra_scripts %}{% endblock %}
 </body>
 </html>

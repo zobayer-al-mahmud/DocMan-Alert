@@ -3,45 +3,95 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - DocMan Alert</title>
+    <title>Sign in - DocMan Alert</title>
     <link href="{{ url_for('static', filename='vendor/bootstrap.min.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
     <link rel="icon" href="{{ url_for('static', filename='img/ananta_favicon.png') }}">
 </head>
-<body>
-    <div class="login-wrap">
-        <div class="login-card">
-            <img src="{{ url_for('static', filename='img/ananta_logo_full.png') }}" alt="Ananta Companies" class="login-logo">
-            <h4>DocMan Alert</h4>
-            <div class="login-sub">Ananta Companies</div>
+<body class="login-page">
+    <div class="login-shell">
+        <!-- Left: brand panel -->
+        <aside class="login-brand">
+            <div class="brand-logo-card">
+                <img src="{{ url_for('static', filename='img/ananta_logo_full.png') }}" alt="Ananta Companies">
+            </div>
+            <h1 class="brand-title">DocMan Alert</h1>
+            <p class="brand-desc">
+                Ananta Companies &middot; Compliance. One system for factory documents,
+                employee compliance, vehicle documents, audit tracking and expiry alerts.
+            </p>
+            <div class="brand-abbr">AGL &nbsp;&middot;&nbsp; ASL &nbsp;&middot;&nbsp; AJL &nbsp;&middot;&nbsp; ABM</div>
+        </aside>
 
-            {% with messages = get_flashed_messages(with_categories=true) %}
-                {% if messages %}
-                    {% for category, message in messages %}
-                        <div class="alert alert-{{ category }}">{{ message }}</div>
-                    {% endfor %}
+        <!-- Right: sign-in form -->
+        <main class="login-form-col">
+            <div class="login-form-block">
+                <img src="{{ url_for('static', filename='img/ananta_logo_header.png') }}" alt="Ananta" class="form-logo">
+                <h2 class="form-title">Sign in</h2>
+                <p class="form-sub">Enter your work account to continue.</p>
+
+                {% if request.args.get('expired') %}
+                <div class="alert alert-warning">Your session expired due to inactivity. Please sign in again.</div>
                 {% endif %}
-            {% endwith %}
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                        <div class="alert alert-{{ category }}">{{ message }}</div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
 
-            <form method="POST">
-                {{ form.hidden_tag() }}
-                <div class="mb-3">
-                    {{ form.username.label(class="form-label") }}
-                    {{ form.username(class="form-control") }}
-                    {% for error in form.username.errors %}
-                    <div class="text-danger small mt-1">{{ error }}</div>
-                    {% endfor %}
-                </div>
-                <div class="mb-3">
-                    {{ form.password.label(class="form-label") }}
-                    {{ form.password(class="form-control") }}
-                    {% for error in form.password.errors %}
-                    <div class="text-danger small mt-1">{{ error }}</div>
-                    {% endfor %}
-                </div>
-                {{ form.submit(class="btn btn-primary w-100") }}
-            </form>
-        </div>
+                <form method="POST" novalidate>
+                    {{ form.hidden_tag() }}
+                    <div class="login-field">
+                        {{ form.username.label(text="Username") }}
+                        {{ form.username(class="form-control", placeholder="e.g. workstudy", autofocus=true, autocomplete="username") }}
+                        {% for error in form.username.errors %}
+                        <div class="text-danger small mt-1">{{ error }}</div>
+                        {% endfor %}
+                    </div>
+                    <div class="login-field">
+                        {{ form.password.label(text="Password") }}
+                        <div class="login-password">
+                            {{ form.password(class="form-control", placeholder="••••••••", autocomplete="current-password", id="password") }}
+                            <button type="button" class="toggle-pw" id="togglePw" aria-label="Show password">
+                                <svg id="eyeIcon" xmlns="http://www.w3.org/2000/svg" width="19" height="19" viewBox="0 0 24 24"
+                                     fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"></path>
+                                    <circle cx="12" cy="12" r="3"></circle>
+                                    <line id="eyeSlash" x1="3" y1="3" x2="21" y2="21"></line>
+                                </svg>
+                            </button>
+                        </div>
+                        {% for error in form.password.errors %}
+                        <div class="text-danger small mt-1">{{ error }}</div>
+                        {% endfor %}
+                    </div>
+                    <button type="submit" class="btn-login">Sign in</button>
+                </form>
+
+                <p class="form-footer">Access is role-based &middot; contact the administrator for an account</p>
+            </div>
+        </main>
     </div>
+
+    <script>
+        (function () {
+            var btn = document.getElementById('togglePw');
+            var pw = document.getElementById('password');
+            var slash = document.getElementById('eyeSlash');
+            if (btn && pw) {
+                btn.addEventListener('click', function () {
+                    var show = pw.type === 'password';
+                    pw.type = show ? 'text' : 'password';
+                    if (slash) slash.style.display = show ? 'none' : '';
+                    btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+                });
+            }
+            // If a session just expired in another tab, this tab is already on
+            // login; clear the cross-tab logout flag so it doesn't loop.
+            try { localStorage.removeItem('docman-logout'); } catch (e) {}
+        })();
+    </script>
 </body>
 </html>

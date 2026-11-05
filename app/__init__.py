@@ -85,6 +85,49 @@ def create_app():
     from app.routes.audits import audits_bp
     app.register_blueprint(audits_bp)
 
+    @app.before_request
+    def enforce_inactivity_timeout():
+        """Server-side sliding inactivity timeout.
+
+        For a signed-in user, expire the session when more than
+        INACTIVITY_TIMEOUT_MINUTES have passed since the last request, then send
+        a normal navigation to the login page with a session-expired notice (or
+        a 401 for an XHR/fetch caller). Any other request refreshes the window.
+        Static assets and the auth endpoints are never gated.
+        """
+        import time
+        from flask import session, request, redirect, url_for, jsonify
+        from flask_login import current_user, logout_user
+
+        endpoint = request.endpoint or ""
+        if endpoint == "static" or request.path.startswith("/static/"):
+            return None
+        if endpoint in ("auth.login", "auth.logout", "auth.session_timeout"):
+            return None
+        if not current_user.is_authenticated:
+            return None
+
+        timeout_seconds = app.config["INACTIVITY_TIMEOUT_MINUTES"] * 60
+        now = time.time()
+        last = session.get("last_activity")
+        session.permanent = True
+        if last is not None and (now - last) > timeout_seconds:
+            logout_user()
+            session.clear()
+            from app.utils import log_event
+            log_event("SESSION_TIMEOUT", "Session expired after inactivity.",
+                      username_or_process="system")
+            wants_json = (
+                request.is_json
+                or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+                or "application/json" in (request.headers.get("Accept") or "")
+            )
+            if wants_json:
+                return jsonify({"error": "session_expired"}), 401
+            return redirect(url_for("auth.login", expired=1))
+        session["last_activity"] = now
+        return None
+
     @app.after_request
     def set_security_headers(response):
         if not request.path.startswith("/static/"):

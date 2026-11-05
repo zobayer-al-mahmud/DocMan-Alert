@@ -72,3 +72,19 @@ def logout():
     log_event("LOGOUT", f"User '{username}' logged out.", username_or_process=username)
     flash("You have been logged out.", "info")
     return redirect(url_for("auth.login"))
+
+
+@auth_bp.route("/session-timeout")
+def session_timeout():
+    """Called by the client inactivity timer. Clears the session and sends the
+    user to the login page with the session-expired notice. Safe to hit while
+    already logged out (idempotent); never shows the generic 'logged out' flash.
+    """
+    from flask import session
+    if current_user.is_authenticated:
+        username = current_user.username
+        logout_user()
+        log_event("SESSION_TIMEOUT", f"User '{username}' session expired after inactivity.",
+                  username_or_process=username)
+    session.clear()
+    return redirect(url_for("auth.login", expired=1))

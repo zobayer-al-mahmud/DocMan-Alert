@@ -145,14 +145,18 @@ def main():
     r = client.get("/logout")
     check("GET logout forbidden", r.status_code == 405)
     r = client.post("/logout", follow_redirects=True)
-    check("POST logout", r.status_code == 200 and b"Login" in r.data)
+    check("POST logout", r.status_code == 200 and b"Sign in" in r.data)
 
-    # ---- No idle timeout: a long-idle session stays signed in ----
+    # ---- Idle timeout: a long-idle session is expired and redirected ----
     login(client, names["sa"])
     with client.session_transaction() as sess:
         sess["last_activity"] = time_now_minus_hours(24)
     r = client.get("/", follow_redirects=False)
-    check("session with no activity for a day still works", r.status_code == 200)
+    check("idle session expires and redirects to login",
+          r.status_code == 302 and "expired=1" in r.headers.get("Location", ""),
+          f"{r.status_code} {r.headers.get('Location')}")
+    # Re-establish a live session for the remaining checks.
+    login(client, names["sa"])
 
     # ---- Lockout ----
     lock_target = names["usr"] or names["mgr"]
