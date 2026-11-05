@@ -187,6 +187,18 @@ a:hover { color: var(--gold-600); }
 .stat-card.stat-warning .stat-value { color: var(--warning); }
 .stat-card.stat-danger { border-left-color: var(--danger); }
 .stat-card.stat-danger .stat-value { color: var(--danger); }
+/* Clickable stat cards (wrapped in an <a class="stat-link">) lift slightly on
+   hover so it's clear they drill through to the matching filtered list. */
+a.stat-link { display: block; color: inherit; }
+a.stat-link .stat-card { transition: box-shadow .15s, transform .15s; }
+a.stat-link:hover .stat-card {
+  box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+  transform: translateY(-2px);
+}
+a.stat-link:focus-visible .stat-card {
+  outline: 2px solid var(--navy-700);
+  outline-offset: 2px;
+}
 
 /* ---------- Tables ---------- */
 .table { margin-bottom: 0; font-size: 13.5px; }

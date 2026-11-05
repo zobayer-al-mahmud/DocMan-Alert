@@ -18,6 +18,7 @@
         <div class="col-md-3">
             <select name="status" class="form-select">
                 <option value="">All Status</option>
+                <option value="expiring" {% if selected_status == 'expiring' %}selected{% endif %}>Expiring (soon)</option>
                 {% for s in all_statuses %}<option value="{{ s }}" {% if selected_status == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
             </select>
         </div>

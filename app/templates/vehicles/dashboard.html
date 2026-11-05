@@ -20,7 +20,9 @@
         </a>
     </div>
     <div class="col-md-3 col-sm-6">
-        <div class="stat-card stat-success"><div class="stat-label">Compliant vehicles</div><div class="stat-value">{{ compliant_vehicles }}</div></div>
+        <a href="{{ url_for('vehicles.list_vehicles', compliant=1) }}" class="stat-link text-decoration-none">
+            <div class="stat-card stat-success"><div class="stat-label">Compliant vehicles</div><div class="stat-value">{{ compliant_vehicles }}</div></div>
+        </a>
     </div>
     <div class="col-md-3 col-sm-6">
         <a href="{{ url_for('vehicles.list_vehicles', status='Expired') }}" class="text-decoration-none">

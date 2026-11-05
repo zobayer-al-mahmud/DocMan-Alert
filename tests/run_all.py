@@ -39,6 +39,7 @@ TESTS = [
     "test_employee_delete.py",
     "test_audits.py",
     "test_session_timeout.py",
+    "test_dashboard_card_links.py",
 ]
 
 

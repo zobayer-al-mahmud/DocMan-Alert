@@ -7,25 +7,39 @@
 <h5 class="section-heading mb-2">Factory Documents</h5>
 <div class="row g-3 mb-4">
     <div class="col-6 col-lg">
-        <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value">{{ total_documents }}</div></div>
+        <a href="{{ url_for('documents.list_documents') }}" class="stat-link">
+            <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value">{{ total_documents }}</div></div>
+        </a>
     </div>
     <div class="col-6 col-lg">
-        <div class="stat-card stat-success"><div class="stat-label">Valid</div><div class="stat-value">{{ valid_count }}</div></div>
+        <a href="{{ url_for('documents.list_documents', status='Valid') }}" class="stat-link">
+            <div class="stat-card stat-success"><div class="stat-label">Valid</div><div class="stat-value">{{ valid_count }}</div></div>
+        </a>
     </div>
     <div class="col-6 col-lg">
-        <div class="stat-card stat-warning"><div class="stat-label">Expiring in 90 Days</div><div class="stat-value">{{ bucket_counts.get('Expiring in 90 Days', 0) }}</div></div>
+        <a href="{{ url_for('documents.list_documents', status='Expiring in 90 Days') }}" class="stat-link">
+            <div class="stat-card stat-warning"><div class="stat-label">Expiring in 90 Days</div><div class="stat-value">{{ bucket_counts.get('Expiring in 90 Days', 0) }}</div></div>
+        </a>
     </div>
     <div class="col-6 col-lg">
-        <div class="stat-card stat-warning"><div class="stat-label">Expiring in 60 Days</div><div class="stat-value">{{ bucket_counts.get('Expiring in 60 Days', 0) }}</div></div>
+        <a href="{{ url_for('documents.list_documents', status='Expiring in 60 Days') }}" class="stat-link">
+            <div class="stat-card stat-warning"><div class="stat-label">Expiring in 60 Days</div><div class="stat-value">{{ bucket_counts.get('Expiring in 60 Days', 0) }}</div></div>
+        </a>
     </div>
     <div class="col-6 col-lg">
-        <div class="stat-card stat-warning"><div class="stat-label">Expiring in 30 Days</div><div class="stat-value">{{ bucket_counts.get('Expiring in 30 Days', 0) }}</div></div>
+        <a href="{{ url_for('documents.list_documents', status='Expiring in 30 Days') }}" class="stat-link">
+            <div class="stat-card stat-warning"><div class="stat-label">Expiring in 30 Days</div><div class="stat-value">{{ bucket_counts.get('Expiring in 30 Days', 0) }}</div></div>
+        </a>
     </div>
     <div class="col-6 col-lg">
-        <div class="stat-card stat-danger"><div class="stat-label">Expiring in 7 Days</div><div class="stat-value">{{ bucket_counts.get('Expiring in 7 Days', 0) }}</div></div>
+        <a href="{{ url_for('documents.list_documents', status='Expiring in 7 Days') }}" class="stat-link">
+            <div class="stat-card stat-danger"><div class="stat-label">Expiring in 7 Days</div><div class="stat-value">{{ bucket_counts.get('Expiring in 7 Days', 0) }}</div></div>
+        </a>
     </div>
     <div class="col-6 col-lg">
-        <div class="stat-card stat-danger"><div class="stat-label">Expired</div><div class="stat-value">{{ expired_count }}</div></div>
+        <a href="{{ url_for('documents.list_documents', status='Expired') }}" class="stat-link">
+            <div class="stat-card stat-danger"><div class="stat-label">Expired</div><div class="stat-value">{{ expired_count }}</div></div>
+        </a>
     </div>
 </div>
 
@@ -33,19 +47,29 @@
 <h5 class="section-heading mb-2">Employee Compliance</h5>
 <div class="row g-3 mb-4">
     <div class="col-6 col-lg">
-        <div class="stat-card"><div class="stat-label">Active Employees</div><div class="stat-value">{{ active_employees }}</div></div>
+        <a href="{{ url_for('employees.list_employees') }}" class="stat-link">
+            <div class="stat-card"><div class="stat-label">Active Employees</div><div class="stat-value">{{ active_employees }}</div></div>
+        </a>
     </div>
     <div class="col-6 col-lg">
-        <div class="stat-card stat-warning"><div class="stat-label">Licenses Expiring</div><div class="stat-value">{{ emp_license_expiring }}</div></div>
+        <a href="{{ url_for('employees.list_licenses', status='expiring') }}" class="stat-link">
+            <div class="stat-card stat-warning"><div class="stat-label">Licenses Expiring</div><div class="stat-value">{{ emp_license_expiring }}</div></div>
+        </a>
     </div>
     <div class="col-6 col-lg">
-        <div class="stat-card stat-danger"><div class="stat-label">Licenses Expired</div><div class="stat-value">{{ emp_license_expired }}</div></div>
+        <a href="{{ url_for('employees.list_licenses', status='Expired') }}" class="stat-link">
+            <div class="stat-card stat-danger"><div class="stat-label">Licenses Expired</div><div class="stat-value">{{ emp_license_expired }}</div></div>
+        </a>
     </div>
     <div class="col-6 col-lg">
-        <div class="stat-card stat-warning"><div class="stat-label">Checkups Expiring</div><div class="stat-value">{{ checkup_expiring }}</div></div>
+        <a href="{{ url_for('employees.list_checkups', status='expiring') }}" class="stat-link">
+            <div class="stat-card stat-warning"><div class="stat-label">Checkups Expiring</div><div class="stat-value">{{ checkup_expiring }}</div></div>
+        </a>
     </div>
     <div class="col-6 col-lg">
-        <div class="stat-card stat-danger"><div class="stat-label">Checkups Expired</div><div class="stat-value">{{ checkup_expired }}</div></div>
+        <a href="{{ url_for('employees.list_checkups', status='Expired') }}" class="stat-link">
+            <div class="stat-card stat-danger"><div class="stat-label">Checkups Expired</div><div class="stat-value">{{ checkup_expired }}</div></div>
+        </a>
     </div>
 </div>
 {% endif %}
@@ -54,28 +78,44 @@
 <h5 class="section-heading mb-2">Vehicle Documents</h5>
 <div class="row g-3 mb-4">
     <div class="col-6 col-lg-3">
-        <div class="stat-card"><div class="stat-label">Total Vehicles</div><div class="stat-value">{{ vehicle_overview.total_vehicles }}</div></div>
+        <a href="{{ url_for('vehicles.list_vehicles') }}" class="stat-link">
+            <div class="stat-card"><div class="stat-label">Total Vehicles</div><div class="stat-value">{{ vehicle_overview.total_vehicles }}</div></div>
+        </a>
     </div>
     <div class="col-6 col-lg-3">
-        <div class="stat-card stat-success"><div class="stat-label">Compliant Vehicles</div><div class="stat-value">{{ vehicle_overview.compliant_vehicles }}</div></div>
+        <a href="{{ url_for('vehicles.list_vehicles', compliant=1) }}" class="stat-link">
+            <div class="stat-card stat-success"><div class="stat-label">Compliant Vehicles</div><div class="stat-value">{{ vehicle_overview.compliant_vehicles }}</div></div>
+        </a>
     </div>
     <div class="col-6 col-lg-3">
-        <div class="stat-card stat-danger"><div class="stat-label">Expired Documents</div><div class="stat-value">{{ vehicle_overview.expired_docs }}</div></div>
+        <a href="{{ url_for('vehicles.list_vehicles', status='Expired') }}" class="stat-link">
+            <div class="stat-card stat-danger"><div class="stat-label">Expired Documents</div><div class="stat-value">{{ vehicle_overview.expired_docs }}</div></div>
+        </a>
     </div>
     <div class="col-6 col-lg-3">
-        <div class="stat-card stat-danger"><div class="stat-label">Missing Required Documents</div><div class="stat-value">{{ vehicle_overview.missing_required }}</div></div>
+        <a href="{{ url_for('vehicles.list_vehicles', missing=1) }}" class="stat-link">
+            <div class="stat-card stat-danger"><div class="stat-label">Missing Required Documents</div><div class="stat-value">{{ vehicle_overview.missing_required }}</div></div>
+        </a>
     </div>
     <div class="col-6 col-lg-3">
-        <div class="stat-card stat-danger"><div class="stat-label">Expiring in 7 Days</div><div class="stat-value">{{ vehicle_overview.expiring_7 }}</div></div>
+        <a href="{{ url_for('vehicles.list_vehicles', status='Expiring in 7 Days') }}" class="stat-link">
+            <div class="stat-card stat-danger"><div class="stat-label">Expiring in 7 Days</div><div class="stat-value">{{ vehicle_overview.expiring_7 }}</div></div>
+        </a>
     </div>
     <div class="col-6 col-lg-3">
-        <div class="stat-card stat-warning"><div class="stat-label">Expiring in 30 Days</div><div class="stat-value">{{ vehicle_overview.expiring_30 }}</div></div>
+        <a href="{{ url_for('vehicles.list_vehicles', status='Expiring in 30 Days') }}" class="stat-link">
+            <div class="stat-card stat-warning"><div class="stat-label">Expiring in 30 Days</div><div class="stat-value">{{ vehicle_overview.expiring_30 }}</div></div>
+        </a>
     </div>
     <div class="col-6 col-lg-3">
-        <div class="stat-card stat-warning"><div class="stat-label">Expiring in 60 Days</div><div class="stat-value">{{ vehicle_overview.expiring_60 }}</div></div>
+        <a href="{{ url_for('vehicles.list_vehicles', status='Expiring in 60 Days') }}" class="stat-link">
+            <div class="stat-card stat-warning"><div class="stat-label">Expiring in 60 Days</div><div class="stat-value">{{ vehicle_overview.expiring_60 }}</div></div>
+        </a>
     </div>
     <div class="col-6 col-lg-3">
-        <div class="stat-card stat-warning"><div class="stat-label">Expiring in 90 Days</div><div class="stat-value">{{ vehicle_overview.expiring_90 }}</div></div>
+        <a href="{{ url_for('vehicles.list_vehicles', status='Expiring in 90 Days') }}" class="stat-link">
+            <div class="stat-card stat-warning"><div class="stat-label">Expiring in 90 Days</div><div class="stat-value">{{ vehicle_overview.expiring_90 }}</div></div>
+        </a>
     </div>
 </div>
 
@@ -144,19 +184,29 @@
 <h5 class="section-heading mb-2">Compliance Audits</h5>
 <div class="row g-3 mb-4">
     <div class="col-6 col-lg">
-        <div class="stat-card"><div class="stat-label">Total Audits</div><div class="stat-value">{{ audit_overview.total }}</div></div>
+        <a href="{{ url_for('audits.list_audits') }}" class="stat-link">
+            <div class="stat-card"><div class="stat-label">Total Audits</div><div class="stat-value">{{ audit_overview.total }}</div></div>
+        </a>
     </div>
     <div class="col-6 col-lg">
-        <div class="stat-card"><div class="stat-label">Upcoming</div><div class="stat-value">{{ audit_overview.upcoming }}</div></div>
+        <a href="{{ url_for('audits.list_audits', timeframe='upcoming') }}" class="stat-link">
+            <div class="stat-card"><div class="stat-label">Upcoming</div><div class="stat-value">{{ audit_overview.upcoming }}</div></div>
+        </a>
     </div>
     <div class="col-6 col-lg">
-        <div class="stat-card stat-success"><div class="stat-label">Completed</div><div class="stat-value">{{ audit_overview.completed }}</div></div>
+        <a href="{{ url_for('audits.list_audits', timeframe='completed') }}" class="stat-link">
+            <div class="stat-card stat-success"><div class="stat-label">Completed</div><div class="stat-value">{{ audit_overview.completed }}</div></div>
+        </a>
     </div>
     <div class="col-6 col-lg">
-        <div class="stat-card stat-warning"><div class="stat-label">Validity Expiring</div><div class="stat-value">{{ audit_overview.expiring }}</div></div>
+        <a href="{{ url_for('audits.list_audits', status='expiring') }}" class="stat-link">
+            <div class="stat-card stat-warning"><div class="stat-label">Validity Expiring</div><div class="stat-value">{{ audit_overview.expiring }}</div></div>
+        </a>
     </div>
     <div class="col-6 col-lg">
-        <div class="stat-card stat-danger"><div class="stat-label">Overdue (expired)</div><div class="stat-value">{{ audit_overview.overdue }}</div></div>
+        <a href="{{ url_for('audits.list_audits', status='Expired') }}" class="stat-link">
+            <div class="stat-card stat-danger"><div class="stat-label">Overdue (expired)</div><div class="stat-value">{{ audit_overview.overdue }}</div></div>
+        </a>
     </div>
 </div>
 

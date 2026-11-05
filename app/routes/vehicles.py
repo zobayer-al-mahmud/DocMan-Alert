@@ -157,6 +157,15 @@ def _apply_filters(query):
             VehicleDocument.is_active.is_(True),
         )
         query = query.filter(~Vehicle.id.in_(subq))
+    if request.args.get("compliant") == "1":
+        # "Compliant vehicles" dashboard card: vehicles with no active document in
+        # an attention-grade status (expiring soon or expired). Mirrors the
+        # compliant_vehicles count in the vehicle dashboard overview.
+        attn_subq = db.session.query(VehicleDocument.vehicle_id).filter(
+            VehicleDocument.is_active.is_(True),
+            VehicleDocument.status.in_(ATTENTION_STATUSES),
+        )
+        query = query.filter(~Vehicle.id.in_(attn_subq))
     if request.args.get("urgent") == "1":
         # "See all" from the dashboard Urgent Renewals panel: vehicles with any
         # active document that is Expired or due within 30 days.
@@ -204,6 +213,7 @@ def list_vehicles():
         selected_status=request.args.get("status", ""),
         missing_only=request.args.get("missing") == "1",
         urgent_only=request.args.get("urgent") == "1",
+        compliant_only=request.args.get("compliant") == "1",
         show_archived=show_archived,
         can_manage=current_user.role.name in MANAGE_ROLES,
         can_delete=current_user.role.name in DELETE_ROLES,

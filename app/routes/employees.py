@@ -15,10 +15,14 @@ from app.models import (
 )
 from app.forms import EmployeeForm, EmployeeComplianceForm, HealthCheckupForm
 from app.utils import (
-    roles_required, compute_status, ALL_STATUSES, log_event, log_record, valid_email,
+    roles_required, compute_status, ALL_STATUSES, EXPIRING_STATUSES, log_event, log_record, valid_email,
     expiry_before_issue, matching_alert_users, department_group_emails,
     manual_employee_record_users, send_manual_employee_record_alert,
 )
+
+# Dashboard "Expiring" cards aggregate the four 90/60/30/7-day buckets. The list
+# status filter accepts this meta-value to reproduce that exact set of records.
+STATUS_EXPIRING_ANY = "expiring"
 
 employees_bp = Blueprint("employees", __name__, url_prefix="/employees")
 
@@ -906,7 +910,9 @@ def list_licenses():
     search = request.args.get("search", "").strip()
     if compliance_type:
         query = query.filter(EmployeeCompliance.compliance_type.ilike(f"%{compliance_type}%"))
-    if status:
+    if status == STATUS_EXPIRING_ANY:
+        query = query.filter(EmployeeCompliance.status.in_(EXPIRING_STATUSES))
+    elif status:
         query = query.filter(EmployeeCompliance.status == status)
     if search:
         from app.ocr_service import normalize_bangla_digits
@@ -943,7 +949,9 @@ def list_checkups():
     search = request.args.get("search", "").strip()
     if exam_type:
         query = query.filter(HealthCheckup.exam_type == exam_type)
-    if status:
+    if status == STATUS_EXPIRING_ANY:
+        query = query.filter(HealthCheckup.status.in_(EXPIRING_STATUSES))
+    elif status:
         query = query.filter(HealthCheckup.status == status)
     if search:
         from app.ocr_service import normalize_bangla_digits

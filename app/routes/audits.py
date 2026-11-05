@@ -37,6 +37,9 @@ ALERT_ROLES = ("Super Admin", "Compliance Manager", "Compliance User")
 AUDIT_STATUS_CHOICES = list(ALL_STATUSES) + [AUDIT_NO_VALIDITY]
 # Validity statuses that make an audit's certificate overdue (needs renewal).
 OVERDUE_STATUSES = (STATUS_EXPIRED,)
+# Meta status value from the dashboard "Validity Expiring" card: expands to the
+# four 90/60/30/7-day buckets so the filtered list matches the card count.
+AUDIT_STATUS_EXPIRING_ANY = "expiring"
 
 AUDIT_TYPE_SUGGESTIONS = [
     "Social", "Technical", "Security", "Certification", "Safety",
@@ -162,6 +165,7 @@ def list_audits():
     factory_id = request.args.get("factory_id", type=int)
     audit_type = request.args.get("audit_type", "").strip()
     status = request.args.get("status", "").strip()
+    timeframe = request.args.get("timeframe", "").strip()
 
     if search:
         like = f"%{search}%"
@@ -176,8 +180,17 @@ def list_audits():
         query = query.filter(Audit.factories.any(Factory.id == factory_id))
     if audit_type:
         query = query.filter(Audit.audit_type.ilike(f"%{audit_type}%"))
-    if status:
+    # Dashboard "Validity Expiring" card aggregates the four expiring buckets.
+    if status == AUDIT_STATUS_EXPIRING_ANY:
+        query = query.filter(Audit.status.in_(EXPIRING_STATUSES))
+    elif status:
         query = query.filter(Audit.status == status)
+    # Dashboard "Upcoming" / "Completed" cards filter on the audit date, not the
+    # validity status, so they use a separate timeframe parameter.
+    if timeframe == "upcoming":
+        query = query.filter(Audit.date_start > bst_today())
+    elif timeframe == "completed":
+        query = query.filter(Audit.date_start <= bst_today())
 
     page = request.args.get("page", 1, type=int)
     pagination = query.order_by(Audit.date_start.desc().nullslast()).paginate(
@@ -192,6 +205,7 @@ def list_audits():
         selected_factory_id=factory_id,
         selected_audit_type=audit_type,
         selected_status=status,
+        selected_timeframe=timeframe,
         status_choices=AUDIT_STATUS_CHOICES,
         type_suggestions=AUDIT_TYPE_SUGGESTIONS,
         show_archived=show_archived,
